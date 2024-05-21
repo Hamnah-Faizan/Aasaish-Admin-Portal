@@ -1,255 +1,286 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
-  Button, Table, TableBody, TableCell, TableContainer, MenuItem, TableHead, TableRow, Paper, Typography, IconButton, Modal, Box, TextField, Grid, Container, createTheme, ThemeProvider, CssBaseline
+    Typography, Container, Box
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import { blue, pink } from '@mui/material/colors';
+import Sidebar from './Sidebar';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { Toolbar } from 'primereact/toolbar';
+import { Dialog } from 'primereact/dialog';
+import { InputText } from 'primereact/inputtext';
+import { Dropdown } from 'primereact/dropdown';
+import { Toast } from 'primereact/toast';
+import { Button } from 'primereact/button';
+import { useSnackbar } from 'notistack';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import Sidebar from './Sidebar';
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: blue[500],
-    },
-    secondary: {
-      main: pink['A400'],
-    },
-  },
-});
-
-const mapContainerStyle = {
-  height: '400px',
-  width: '100%',
-  marginTop: '20px',
-};
-
-const modalStyle = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: '90%',
-  maxWidth: '600px',
-  bgcolor: 'background.paper',
-  borderRadius: '16px',
-  p: 4,
-  overflowY: 'auto',
-  maxHeight: '90vh',
-};
+import { BASE_URL } from './config';
 
 const StoresPage = () => {
-  const [brands, setBrands] = useState([]);
-  const [stores, setStores] = useState([]);
-  const [openStoreModal, setOpenStoreModal] = useState(false);
-  const [currentStore, setCurrentStore] = useState({ name: '', address: '', contactInfo: '', location: { lat: 24.8607, lng: 67.0011 }, brand: ''});
-  const [isEditingStore, setIsEditingStore] = useState(false);
-
-  useEffect(() => {
-    fetchBrands();
-    fetchStores();
-  }, []);
-
-  const fetchBrands = async () => {
-    try {
-      const accessToken = localStorage.getItem('token');
-      if (!accessToken) {
-        console.error("Access token not available.");
-        return;
-      }
-      const response = await axios.get('http://localhost:4000/Brand/getbrands', { headers: { Authorization: `Bearer ${accessToken}` } });
-      setBrands(response.data);
-    } catch (error) {
-      console.error("Failed to fetch brands:", error);
-    }
-  };
-
-  const fetchStores = async () => {
-    try {
-      const accessToken = localStorage.getItem('token');
-      if (!accessToken) {
-        console.error("Access token not available.");
-        return;
-      }
-      const response = await axios.get('http://localhost:4000/Store/all', { headers: { Authorization: `Bearer ${accessToken}` } });
-      setStores(response.data);
-    } catch (error) {
-      console.error("Failed to fetch stores:", error);
-    }
-  };
-
-  const handleOpenStoreModal = () => {
-    setOpenStoreModal(true);
-    setCurrentStore({ name: '', address: '', contactInfo: '', location: { lat: 24.8607, lng: 67.0011 }, brand: '' });
-    setIsEditingStore(false);
-  };
-
-  const handleCloseStoreModal = () => {
-    setOpenStoreModal(false);
-  };
-
-  const handleChangeStore = (e) => {
-    const { name, value } = e.target;
-    setCurrentStore(prevState => ({
-      ...prevState,
-      [name]: value,
-    }));
-  };
-
-  const handleSubmitStore = async (e) => {
-    e.preventDefault();
-    try {
-      const accessToken = localStorage.getItem('token');
-      if (!accessToken) {
-        console.error("Access token not available.");
-        return;
-      }
-
-    if (isEditingStore) {
-      await axios.put(`http://localhost:4000/Store/${currentStore._id}`, currentStore, { headers: { Authorization: `Bearer ${accessToken}` } });
-    } else {
-      await axios.post('http://localhost:4000/Store/create', currentStore, { headers: { Authorization: `Bearer ${accessToken}` } });
-    }
-      handleCloseStoreModal();
-      await fetchStores();
-    } catch (error) {
-      console.error("Failed to submit store:", error);
-    }
-  };
-
-  const handleEditStore = (id) => {
-    const storeToEdit = stores.find((store) => store._id === id);
-    if (storeToEdit) {
-      setCurrentStore(storeToEdit);
-      setOpenStoreModal(true);
-      setIsEditingStore(true);
-    } else {
-      console.error("Store not found");
-    }
-  };
-
-  const handleDeleteStore = async (id) => {
-    try {
-      const accessToken = localStorage.getItem('token');
-      if (!accessToken) {
-        console.error("Access token not available.");
-        return;
-      }
-      await axios.delete(`http://localhost:4000/Store/${id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-      await fetchStores();
-    } catch (error) {
-      console.error("Failed to delete store:", error);
-    }
-  };
-  const MapClick = () => {
-    useMapEvents({
-      click: (e) => {
-        setCurrentStore(prevState => ({
-          ...prevState,
-          location: { lat: e.latlng.lat, lng: e.latlng.lng },
-        }));
-      },
+    const { enqueueSnackbar } = useSnackbar();
+    const [stores, setStores] = useState([]);
+    const [brands, setBrands] = useState([]);
+    const [newStore, setNewStore] = useState({
+        name: '', address: '', contactInfo: '', location: { lat: 24.8607, lng: 67.0011 }, brand: ''
     });
-    return null;
-  };
+    const [isEditing, setIsEditing] = useState(false);
+    const [currentStore, setCurrentStore] = useState({});
+    const [storeDialog, setStoreDialog] = useState(false);
+    const [deleteDialog, setDeleteDialog] = useState(false);
+    const [storeToDelete, setStoreToDelete] = useState(null);
+    const toast = useRef(null);
+    const dt = useRef(null);
+    const [globalFilter, setGlobalFilter] = useState('');
 
-  const keyExtractor = (item) => item._id;
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        fetchStores();
+        fetchBrands();
+    }, []);
 
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Container maxWidth="lg">
-        <Box sx={{ display: 'flex' }}>
-          <Sidebar />
-          <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-            <Typography variant="h4" gutterBottom align="center" color="primary.main">
-            Stores
-          </Typography>
+    const fetchStores = async () => {
+        try {
+            const response = await axios.get(`${BASE_URL}/Store/all`);
+            setStores(response.data);
+        } catch (error) {
+            console.error("Failed to fetch stores:", error);
+        }
+    };
 
-          {/* Store Modal */}
-          <Modal open={openStoreModal} onClose={handleCloseStoreModal}>
-            <Box sx={modalStyle} component="form" onSubmit={handleSubmitStore}>
-              <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-                {isEditingStore ? "Edit Store" : "Add New Store"}
-              </Typography>
-              <TextField margin="normal" fullWidth label="Brand" name="brand" select value={currentStore.brand} onChange={handleChangeStore}>
-                {brands.map((brand) => (
-                  <MenuItem key={brand._id} value={brand._id}>
-                    {brand.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField margin="normal" fullWidth label="Name" name="name" value={currentStore.name} onChange={handleChangeStore} />
-              <TextField margin="normal" fullWidth label="Address" name="address" value={currentStore.address} onChange={handleChangeStore} />
-              <TextField margin="normal" fullWidth label="Contact Info" name="contactInfo" value={currentStore.contactInfo} onChange={handleChangeStore} />
-              <MapContainer center={[currentStore.location.lat, currentStore.location.lng]} zoom={13} style={mapContainerStyle} scrollWheelZoom={false}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                <MapClick />
-                <Marker position={[currentStore.location.lat, currentStore.location.lng]}>
-                  <Popup>Store Location</Popup>
-                </Marker>
-              </MapContainer>
-              <Grid container spacing={2} sx={{ mt: 2 }}>
-                <Grid item xs={6}>
-                  <TextField fullWidth label="Latitude" name="lat" value={currentStore.location.lat} onChange={handleChangeStore} />
-                </Grid>
-                <Grid item xs={6}>
-                  <TextField fullWidth label="Longitude" name="lng" value={currentStore.location.lng} onChange={handleChangeStore} />
-                </Grid>
-              </Grid>
-              <Button type="submit" variant="contained" color="primary" sx={{ mt: 3 }}>
-                {isEditingStore ? "Update" : "Add"}
-              </Button>
+    const fetchBrands = async () => {
+        try {
+            const response = await axios.get(`${BASE_URL}/Brand/getbrands`);
+            setBrands(response.data);
+        } catch (error) {
+            console.error("Failed to fetch brands:", error);
+        }
+    };
+
+    const openNew = () => {
+        setNewStore({
+            name: '', address: '', contactInfo: '', location: { lat: 24.8607, lng: 67.0011 }, brand: ''
+        });
+        setIsEditing(false);
+        setStoreDialog(true);
+    };
+
+    const hideDialog = () => {
+        setStoreDialog(false);
+    };
+
+    const hideDeleteDialog = () => {
+        setDeleteDialog(false);
+        setStoreToDelete(null);
+    };
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setNewStore(prevState => ({
+            ...prevState,
+            [name]: value,
+        }));
+    };
+
+    const handleEdit = (store) => {
+        const coordinates = store.location?.coordinates || [67.0011, 24.8607];
+        setNewStore({
+            ...store,
+            location: {
+                lat: coordinates[1] || 24.8607,
+                lng: coordinates[0] || 67.0011
+            }
+        });
+        setIsEditing(true);
+        setStoreDialog(true);
+    };
+
+    const confirmDeleteStore = (store) => {
+        setStoreToDelete(store);
+        setDeleteDialog(true);
+    };
+
+    const handleDeleteStore = async () => {
+        if (!storeToDelete) {
+            console.error("Store ID is undefined, cannot delete");
+            return;
+        }
+
+        try {
+            await axios.delete(`${BASE_URL}/Store/${storeToDelete._id}`);
+            fetchStores();
+            enqueueSnackbar('Store deleted successfully', { variant: 'success' });
+        } catch (error) {
+            console.error("Failed to delete store:", error.response ? error.response.data : error);
+        } finally {
+            setDeleteDialog(false);
+        }
+    };
+
+    const saveStore = async () => {
+        try {
+            if (isEditing) {
+                await axios.put(`${BASE_URL}/Store/${newStore._id}`, newStore);
+                enqueueSnackbar('Store updated successfully', { variant: 'success' });
+            } else {
+                await axios.post(`${BASE_URL}/Store/create`, newStore);
+                enqueueSnackbar('Store added successfully', { variant: 'success' });
+            }
+            setStoreDialog(false);
+            fetchStores();
+        } catch (error) {
+            console.error('Failed to save store', error);
+            enqueueSnackbar('Failed to save store', { variant: 'error' });
+        }
+    };
+
+    const MapClick = () => {
+        useMapEvents({
+            click: (e) => {
+                setNewStore(prevState => ({
+                    ...prevState,
+                    location: { lat: e.latlng.lat, lng: e.latlng.lng },
+                }));
+            },
+        });
+        return null;
+    };
+
+    const actionBodyTemplate = (rowData) => {
+        return (
+            <React.Fragment>
+                <Button icon="pi pi-pencil" className="p-button-rounded p-button-success mr-2" onClick={() => handleEdit(rowData)} />
+                <Button icon="pi pi-trash" className="p-button-rounded p-button-danger" onClick={() => confirmDeleteStore(rowData)} />
+            </React.Fragment>
+        );
+    };
+
+    const locationBodyTemplate = (rowData) => {
+        const coordinates = rowData.location?.coordinates || [67.0011, 24.8607];
+        return `Lat: ${coordinates[1]}, Lng: ${coordinates[0]}`;
+    };
+
+    const header = (
+        <div className="table-header">
+            <h5 className="mx-0 my-1">Manage Stores</h5>
+            <span className="p-input-icon-left">
+                <i className="pi pi-search" />
+                <InputText type="search" value={globalFilter} onInput={(e) => setGlobalFilter(e.target.value)} placeholder="Search" />
+            </span>
+        </div>
+    );
+
+    const leftToolbarTemplate = () => {
+        return (
+            <React.Fragment>
+                <Button label="New" icon="pi pi-plus" className="p-button-success mr-2" onClick={openNew} />
+                {/* <Button type="button" icon="pi pi-file" rounded onClick={() => exportCSV(false)} data-pr-tooltip="CSV" />
+                <Button type="button" icon="pi pi-file-excel" severity="success" rounded onClick={exportExcel} data-pr-tooltip="XLS" />
+                <Button type="button" icon="pi pi-file-pdf" severity="warning" rounded onClick={exportPdf} data-pr-tooltip="PDF" /> */}
+            </React.Fragment>
+        )
+    };
+
+    const rightToolbarTemplate = () => {
+        return (
+            <React.Fragment>
+                <Button label="Export" icon="pi pi-upload" className="p-button-help" onClick={() => dt.current.exportCSV()} />
+            </React.Fragment>
+        )
+    };
+
+    const footer = `In total there are ${stores ? stores.length : 0} stores.`;
+
+    return (
+        <Container maxWidth="lg">
+            <Box sx={{ display: "flex" }}>
+                <Sidebar />
+                <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+                    <Typography variant="h4" gutterBottom align="center">
+                        Stores
+                    </Typography>
+                    <Toolbar className="mb-4" left={leftToolbarTemplate} right={rightToolbarTemplate}></Toolbar>
+                    <DataTable
+                        ref={dt}
+                        value={stores}
+                        paginator
+                        header={header}
+                        footer={footer}
+                        rows={10}
+                        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+                        rowsPerPageOptions={[10, 25, 50]}
+                        dataKey="_id"
+                        selectionMode="checkbox"
+                        globalFilter={globalFilter}
+                        emptyMessage="No stores found."
+                        currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+                        tableStyle={{ minWidth: '50rem' }}
+                        showGridlines
+                        stripedRows
+                    >
+                        <Column field="name" header="Name" sortable filter filterPlaceholder="Search by name" style={{ minWidth: '14rem' }} />
+                        <Column field="address" header="Address" sortable filter filterPlaceholder="Search by address" style={{ minWidth: '14rem' }} />
+                        <Column field="contactInfo" header="Contact Info" sortable filter filterPlaceholder="Search by contact info" style={{ minWidth: '14rem' }} />
+                        <Column field="brand.name" header="Brand" sortable filter filterPlaceholder="Search by brand" style={{ minWidth: '14rem' }} />
+                        <Column header="Location" body={locationBodyTemplate} sortable filter filterPlaceholder="Search by location" style={{ minWidth: '14rem' }} />
+                        <Column headerStyle={{ width: '5rem', textAlign: 'center' }} bodyStyle={{ textAlign: 'center', overflow: 'visible' }} body={actionBodyTemplate} />
+                    </DataTable>
+
+                    <Dialog visible={storeDialog} style={{ width: '450px' }} header="Store Details" modal className="p-fluid" footer={() => (
+                        <>
+                            <Button label="Cancel" icon="pi pi-times" className="p-button-text" onClick={hideDialog} />
+                            <Button label="Save" icon="pi pi-check" className="p-button-text" onClick={saveStore} />
+                        </>
+                    )} onHide={hideDialog}>
+                        <div className="p-field">
+                            <label htmlFor="brand">Brand</label>
+                            <Dropdown id="brand" value={newStore.brand || ''} options={brands} onChange={(e) => handleChange({ target: { name: 'brand', value: e.value } })} optionLabel="name" placeholder="Select a Brand" />
+                        </div>
+                        <div className="p-field">
+                            <label htmlFor="name">Name</label>
+                            <InputText id="name" value={newStore.name || ''} onChange={handleChange} name="name" required />
+                        </div>
+                        <div className="p-field">
+                            <label htmlFor="address">Address</label>
+                            <InputText id="address" value={newStore.address || ''} onChange={handleChange} name="address" required />
+                        </div>
+                        <div className="p-field">
+                            <label htmlFor="contactInfo">Contact Info</label>
+                            <InputText id="contactInfo" value={newStore.contactInfo || ''} onChange={handleChange} name="contactInfo" required />
+                        </div>
+                        <MapContainer center={[newStore.location.lat, newStore.location.lng]} zoom={13} style={{ height: '400px', width: '100%', marginTop: '20px', borderRadius: '8px', overflow: 'hidden' }} scrollWheelZoom={false}>
+                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                            <MapClick />
+                            <Marker position={[newStore.location.lat, newStore.location.lng]}>
+                                <Popup>Store Location</Popup>
+                            </Marker>
+                        </MapContainer>
+                        <div className="p-field">
+                            <label htmlFor="lat">Latitude</label>
+                            <InputText id="lat" value={newStore.location.lat || ''} onChange={(e) => handleChange({ target: { name: 'location.lat', value: e.target.value } })} name="lat" required />
+                        </div>
+                        <div className="p-field">
+                            <label htmlFor="lng">Longitude</label>
+                            <InputText id="lng" value={newStore.location.lng || ''} onChange={(e) => handleChange({ target: { name: 'location.lng', value: e.target.value } })} name="lng" required />
+                        </div>
+                    </Dialog>
+
+                    <Dialog visible={deleteDialog} style={{ width: '450px' }} header="Confirm" modal footer={() => (
+                        <>
+                            <Button label="No" icon="pi pi-times" className="p-button-text" onClick={hideDeleteDialog} />
+                            <Button label="Yes" icon="pi pi-check" className="p-button-text" onClick={handleDeleteStore} />
+                        </>
+                    )} onHide={hideDeleteDialog}>
+                        <div className="confirmation-content">
+                            <i className="pi pi-exclamation-triangle" style={{ fontSize: '2rem' }} />
+                            {storeToDelete && <span>Are you sure you want to delete <b>{storeToDelete.name}</b>?</span>}
+                        </div>
+                    </Dialog>
+                </Box>
             </Box>
-          </Modal>
-
-          {/* Store Table */}
-
-          <Button startIcon={<AddCircleOutlineIcon />} variant="contained" color="primary" onClick={handleOpenStoreModal} sx={{ mb: 2 }}>
-            Add New Store
-          </Button>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Address</TableCell>
-                  <TableCell>Contact Info</TableCell>
-                  <TableCell>Brand</TableCell>
-                  <TableCell>Location</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {stores.map((store) => (
-                  <TableRow key={store._id}>
-                    <TableCell>{store.name}</TableCell>
-                    <TableCell>{store.address}</TableCell>
-                    <TableCell>{store.contactInfo}</TableCell>
-                    <TableCell>{store.brand.name}</TableCell>
-                    <TableCell>{`Lat: ${store.location.lat}, Lng: ${store.location.lng}`}</TableCell>
-                    <TableCell align="right">
-                      <IconButton color="primary" onClick={() => handleEditStore(store._id)}>
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton color="secondary" onClick={() => handleDeleteStore(store._id)}>
-                        <DeleteIcon />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          </Box>
-        </Box>
-      </Container>
-    </ThemeProvider>
-  );
+        </Container>
+    );
 };
 
 export default StoresPage;

@@ -13,6 +13,10 @@ import ProductsPage from './ProductsPage';
 import CustomersPage from './CustomersPage';
 import VendorsPage from './VendorsPage';
 import TagsPage from './TagsPage';
+import 'primereact/resources/themes/saga-blue/theme.css';  // Choose a theme
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+import 'primeflex/primeflex.css';
 
 
 // Import other components
