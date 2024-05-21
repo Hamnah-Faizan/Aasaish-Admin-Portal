@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
-  Button, Table, IconButton, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
+  Button, Table, IconButton, TableBody, TableCell, TableContainer, Grid, TableHead, TableRow, Paper,
   Typography, Modal, Box, TextField, Container, createTheme, ThemeProvider, CssBaseline,
   MenuItem, FormControl, Select, InputLabel
 } from '@mui/material';
@@ -10,6 +10,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { blue, pink } from '@mui/material/colors';
 import Sidebar from './Sidebar';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
 
 const theme = createTheme({
   palette: {
@@ -21,6 +22,12 @@ const theme = createTheme({
     },
   },
 });
+
+const mapContainerStyle = {
+  height: '400px',
+  width: '100%',
+  marginTop: '20px',
+};
 
 const modalStyle = {
   position: 'absolute',
@@ -45,10 +52,7 @@ const CustomersPage = () => {
     username: '',
     email: '',
     password: '',
-    location: {
-      type: 'Point',
-      coordinates: [0, 0] 
-    },
+    location: { lat: 24.8607, lng: 67.0011 },
     address: '',
     role: 'Customer',
     status: 'ACTIVE'
@@ -68,15 +72,13 @@ const CustomersPage = () => {
       const response = await axios.get('http://localhost:4000/User/customers', {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
-      // Ensure that you are setting an array even if data is undefined or null
-      console.log(response.data.data)
+      console.log('Fetched customers:', response.data.data); 
       setCustomers(response.data.data);
     } catch (error) {
       console.error("Failed to fetch customers:", error);
-      setCustomers([]); // Set to empty array on error
+      setCustomers([]); 
     }
   };
-  
 
   const handleOpenModal = () => {
     setOpenModal(true);
@@ -87,10 +89,7 @@ const CustomersPage = () => {
       username: '',
       email: '',
       password: '',
-      location: {
-        type: 'Point',
-        coordinates: [0, 0]
-      },
+      location: { lat: 24.8607, lng: 67.0011 },
       address: '',
       role: 'Customer',
       status: 'ACTIVE'
@@ -109,16 +108,16 @@ const CustomersPage = () => {
     }));
   };
 
-  const handleLocationChange = (e) => {
-    const { value } = e.target;
-    const [longitude, latitude] = value.split(',').map(Number);
-    setCurrentCustomer(prevState => ({
-      ...prevState,
-      location: {
-        ...prevState.location,
-        coordinates: [longitude, latitude]
-      }
-    }));
+  const MapClick = () => {
+    useMapEvents({
+      click: (e) => {
+        setCurrentCustomer(prevState => ({
+          ...prevState,
+          location: { lat: e.latlng.lat, lng: e.latlng.lng },
+        }));
+      },
+    });
+    return null;
   };
 
   const handleSubmit = async (event) => {
@@ -128,11 +127,26 @@ const CustomersPage = () => {
       console.error("Access token not available.");
       return;
     }
-    const url = isEditing ? `http://localhost:4000/User/user/${currentCustomer._id}` : 'http://localhost:4000/User/signup';
+
+    const updatedCustomer = {
+      ...currentCustomer,
+      location: {
+        type: "Point",
+        coordinates: [currentCustomer.location.lng, currentCustomer.location.lat] 
+      },
+      address: currentCustomer.address,
+    };
+
+    const url = isEditing
+      ? `http://localhost:4000/User/user/${currentCustomer._id}`
+      : 'http://localhost:4000/User/signup';
     const method = isEditing ? axios.put : axios.post;
+
+    console.log('Submitting customer:', updatedCustomer); 
+
     try {
-      await method(url, currentCustomer, {
-        headers: { Authorization: `Bearer ${accessToken}` }
+      await method(url, updatedCustomer, {
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       handleCloseModal();
       fetchCustomers();
@@ -144,39 +158,35 @@ const CustomersPage = () => {
   const handleEdit = (customer) => {
     setOpenModal(true);
     setIsEditing(true);
-    const coordinates = customer.location && Array.isArray(customer.location.coordinates) 
-                         ? customer.location.coordinates 
-                         : [0, 0];
     setCurrentCustomer({
+      _id: customer._id, 
       firstname: customer.user?.firstname || '',
       lastname: customer.user?.lastname || '',
       username: customer.user?.username || '',
       email: customer.user?.email || '',
       password: customer.user?.password || '',
-      location: {
-        type: 'Point',
-        coordinates: coordinates
-      },
+      location: customer.location?.coordinates
+        ? { lat: customer.location.coordinates[1], lng: customer.location.coordinates[0] }
+        : { lat: 24.8607, lng: 67.0011 },
       address: customer.address || '',
       role: customer.user?.role || 'Customer',
       status: customer.user?.status || 'ACTIVE'
     });
   };
-  
+
   const handleDelete = async (id) => {
     try {
-    const accessToken = localStorage.getItem('token');
-    if (!accessToken) {
-      console.error("Access token not available.");
-      return;
-    }
-    await axios.delete(`http://localhost:4000/User/${id}`, { headers: { Authorization: `Bearer ${accessToken}` } }); 
-    await fetchCustomers();
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
+      }
+      await axios.delete(`http://localhost:4000/User/${id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      await fetchCustomers();
     } catch (error) {
       console.error("Failed to delete customer:", error);
     }
   };
-
 
   return (
     <ThemeProvider theme={theme}>
@@ -201,7 +211,21 @@ const CustomersPage = () => {
                 <TextField margin="normal" fullWidth label="User Name" name="username" value={currentCustomer.username} onChange={handleChange} />
                 <TextField margin="normal" fullWidth label="Email" name="email" value={currentCustomer.email} onChange={handleChange} />
                 <TextField margin="normal" fullWidth label="Password" name="password" type="password" value={currentCustomer.password} onChange={handleChange} />
-                <TextField margin="normal" fullWidth label="Location" name="location" value={currentCustomer.location.coordinates} onChange={handleLocationChange} />
+                <MapContainer center={[currentCustomer.location.lat, currentCustomer.location.lng]} zoom={13} style={mapContainerStyle} scrollWheelZoom={false}>
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <MapClick />
+                  <Marker position={[currentCustomer.location.lat, currentCustomer.location.lng]}>
+                    <Popup>Location</Popup>
+                  </Marker>
+                </MapContainer>
+                <Grid container spacing={2} sx={{ mt: 2 }}>
+                  <Grid item xs={6}>
+                    <TextField fullWidth label="Latitude" name="lat" value={currentCustomer.location.lat} onChange={handleChange} />
+                  </Grid>
+                  <Grid item xs={6}>
+                    <TextField fullWidth label="Longitude" name="lng" value={currentCustomer.location.lng} onChange={handleChange} />
+                  </Grid>
+                </Grid>
                 <TextField margin="normal" fullWidth label="Address" name="address" value={currentCustomer.address} onChange={handleChange} />
                 <FormControl fullWidth margin="normal">
                   <InputLabel id="role-select-label">Role</InputLabel>
@@ -241,38 +265,42 @@ const CustomersPage = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                {customers.map((customer) => (
-                  <TableRow key={customer._id}>  
-                  <TableCell>{customer.user ? customer.user._id : 'No data'}</TableCell>
-                    <TableCell>{customer.user ? customer.user.firstname : 'No data'}</TableCell>
-                    <TableCell>{customer.user ? customer.user.lastname : 'No data'}</TableCell>
-                    <TableCell>{customer.user ? customer.user.username : 'No data'}</TableCell>
-                    <TableCell>{customer.user ? customer.user.email : 'No data'}</TableCell>
-                    <TableCell>{'******'}</TableCell>
-                    <TableCell>{customer.location && customer.location.coordinates
-                          ? customer.location.coordinates.join(', ')
-                          : 'Location not provided'}
-                      </TableCell>
-                    <TableCell>{customer.address || 'Address not provided'}</TableCell>
-                    <TableCell>{customer.user ? customer.user.role : 'No role'}</TableCell>
-                    <TableCell>{customer.user ? (customer.user.status === 'ACTIVE' ? 'Active' : 'Inactive') : 'No status'}</TableCell>
-                    <TableCell align="right">
-                      <IconButton color="primary" onClick={() => handleEdit(customer)}>
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton color="secondary" onClick={() => handleDelete(customer.user._id)}>
-                        <DeleteIcon />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {customers.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={10} align="center">No customers found</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-
+                  {customers.map((customer) => {
+                    console.log(customer); // Debugging line to check the customer object
+                    const coordinatesExist = customer.location && Array.isArray(customer.location.coordinates) && customer.location.coordinates.length === 2;
+                    return (
+                      <TableRow key={customer._id}>
+                        <TableCell>{customer.user ? customer.user._id : 'No data'}</TableCell>
+                        <TableCell>{customer.user ? customer.user.firstname : 'No data'}</TableCell>
+                        <TableCell>{customer.user ? customer.user.lastname : 'No data'}</TableCell>
+                        <TableCell>{customer.user ? customer.user.username : 'No data'}</TableCell>
+                        <TableCell>{customer.user ? customer.user.email : 'No data'}</TableCell>
+                        <TableCell>{'******'}</TableCell>
+                        <TableCell>
+                          {coordinatesExist
+                            ? `Lat: ${customer.location.coordinates[1]}, Lng: ${customer.location.coordinates[0]}`
+                            : 'Location not provided'}
+                        </TableCell>
+                        <TableCell>{customer.address || 'Address not provided'}</TableCell>
+                        <TableCell>{customer.user ? customer.user.role : 'No role'}</TableCell>
+                        <TableCell>{customer.user ? (customer.user.status === 'ACTIVE' ? 'Active' : 'Inactive') : 'No status'}</TableCell>
+                        <TableCell align="right">
+                          <IconButton color="primary" onClick={() => handleEdit(customer)}>
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton color="secondary" onClick={() => handleDelete(customer.user._id)}>
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {customers.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={11} align="center">No customers found</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
               </Table>
             </TableContainer>
           </Box>
