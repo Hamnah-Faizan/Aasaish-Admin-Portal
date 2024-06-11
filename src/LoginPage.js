@@ -33,7 +33,7 @@ function LoginPage() {
       setLoading(false);
       // Redirect or perform additional actions upon successful login
       // For instance, navigate to a dashboard
-      window.location.href = '/stores'; // Update with your route as needed
+      window.location.href = '/dashboard'; // Update with your route as needed
     } catch (err) {
       setError('Failed to login. Please check your username and password.');
       setLoading(false);

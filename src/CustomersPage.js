@@ -1,27 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
-  Button, Table, IconButton, TableBody, TableCell, TableContainer, Grid, TableHead, TableRow, Paper,
-  Typography, Modal, Box, TextField, Container, createTheme, ThemeProvider, CssBaseline,
-  MenuItem, FormControl, Select, InputLabel
+  Typography, Container, Box
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import { blue, pink } from '@mui/material/colors';
 import Sidebar from './Sidebar';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { Dialog } from 'primereact/dialog';
+import { InputText } from 'primereact/inputtext';
+import { Toolbar } from 'primereact/toolbar';
+import { Button } from 'primereact/button';
+import { useSnackbar } from 'notistack';
+import { Dropdown } from 'primereact/dropdown';
+import 'primereact/resources/themes/saga-blue/theme.css';
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+import 'primeflex/primeflex.css';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: blue[500],
-    },
-    secondary: {
-      main: pink['A400'],
-    },
-  },
-});
+import { BASE_URL } from './config';
 
 const mapContainerStyle = {
   height: '400px',
@@ -29,24 +25,11 @@ const mapContainerStyle = {
   marginTop: '20px',
 };
 
-const modalStyle = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: 400,
-  bgcolor: 'background.paper',
-  borderRadius: '16px',
-  p: 4,
-  overflowY: 'auto',
-  maxHeight: '90vh',
-};
 
 const CustomersPage = () => {
+  const { enqueueSnackbar } = useSnackbar();
   const [customers, setCustomers] = useState([]);
-  const [openModal, setOpenModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [currentCustomer, setCurrentCustomer] = useState({
+  const [newCustomer, setNewCustomer] = useState({
     firstname: '',
     lastname: '',
     username: '',
@@ -57,33 +40,30 @@ const CustomersPage = () => {
     role: 'Customer',
     status: 'ACTIVE'
   });
+  const [isEditing, setIsEditing] = useState(false);
+  const [customerDialog, setCustomerDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState(null);
+  const dt = useRef(null);
+  const [globalFilter, setGlobalFilter] = useState('');
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     fetchCustomers();
   }, []);
 
   const fetchCustomers = async () => {
-    const accessToken = localStorage.getItem('token');
-    if (!accessToken) {
-      console.error("Access token not available.");
-      return;
-    }
     try {
-      const response = await axios.get('http://localhost:4000/User/customers', {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      console.log('Fetched customers:', response.data.data); 
+      const response = await axios.get(`${BASE_URL}/User/customers`);
       setCustomers(response.data.data);
     } catch (error) {
       console.error("Failed to fetch customers:", error);
-      setCustomers([]); 
     }
   };
 
-  const handleOpenModal = () => {
-    setOpenModal(true);
-    setIsEditing(false);
-    setCurrentCustomer({
+  const openNew = () => {
+    setNewCustomer({
       firstname: '',
       lastname: '',
       username: '',
@@ -94,24 +74,42 @@ const CustomersPage = () => {
       role: 'Customer',
       status: 'ACTIVE'
     });
+    setIsEditing(false);
+    setCustomerDialog(true);
   };
 
-  const handleCloseModal = () => {
-    setOpenModal(false);
+  const hideDialog = () => {
+    setCustomerDialog(false);
+  };
+
+  const hideDeleteDialog = () => {
+    setDeleteDialog(false);
+    setCustomerToDelete(null);
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setCurrentCustomer(prev => ({
-      ...prev,
+    setNewCustomer(prevState => ({
+      ...prevState,
       [name]: value,
+    }));
+  };
+
+  const handleLatLngChange = (e) => {
+    const { name, value } = e.target;
+    setNewCustomer(prevState => ({
+      ...prevState,
+      location: {
+        ...prevState.location,
+        [name]: value // Simply update the value without parsing
+      }
     }));
   };
 
   const MapClick = () => {
     useMapEvents({
       click: (e) => {
-        setCurrentCustomer(prevState => ({
+        setNewCustomer(prevState => ({
           ...prevState,
           location: { lat: e.latlng.lat, lng: e.latlng.lng },
         }));
@@ -120,51 +118,14 @@ const CustomersPage = () => {
     return null;
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    const accessToken = localStorage.getItem('token');
-    if (!accessToken) {
-      console.error("Access token not available.");
-      return;
-    }
-
-    const updatedCustomer = {
-      ...currentCustomer,
-      location: {
-        type: "Point",
-        coordinates: [currentCustomer.location.lng, currentCustomer.location.lat] 
-      },
-      address: currentCustomer.address,
-    };
-
-    const url = isEditing
-      ? `http://localhost:4000/User/user/${currentCustomer._id}`
-      : 'http://localhost:4000/User/signup';
-    const method = isEditing ? axios.put : axios.post;
-
-    console.log('Submitting customer:', updatedCustomer); 
-
-    try {
-      await method(url, updatedCustomer, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      handleCloseModal();
-      fetchCustomers();
-    } catch (error) {
-      console.error("Failed to submit customer:", error.response?.data || error.message);
-    }
-  };
-
   const handleEdit = (customer) => {
-    setOpenModal(true);
-    setIsEditing(true);
-    setCurrentCustomer({
-      _id: customer._id, 
+    setNewCustomer({
+      _id: customer._id,
       firstname: customer.user?.firstname || '',
       lastname: customer.user?.lastname || '',
       username: customer.user?.username || '',
       email: customer.user?.email || '',
-      password: customer.user?.password || '',
+      password: '',
       location: customer.location?.coordinates
         ? { lat: customer.location.coordinates[1], lng: customer.location.coordinates[0] }
         : { lat: 24.8607, lng: 67.0011 },
@@ -172,142 +133,231 @@ const CustomersPage = () => {
       role: customer.user?.role || 'Customer',
       status: customer.user?.status || 'ACTIVE'
     });
+    setIsEditing(true);
+    setCustomerDialog(true);
   };
 
-  const handleDelete = async (id) => {
+  const confirmDeleteCustomer = (customer) => {
+    setCustomerToDelete(customer);
+    setDeleteDialog(true);
+  };
+
+  const handleDeleteCustomer = async () => {
+    if (!customerToDelete) {
+      console.error("Customer ID is undefined, cannot delete");
+      return;
+    }
+
     try {
       const accessToken = localStorage.getItem('token');
       if (!accessToken) {
         console.error("Access token not available.");
         return;
       }
-      await axios.delete(`http://localhost:4000/User/${id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-      await fetchCustomers();
+      await axios.delete(`${BASE_URL}/User/${customerToDelete.user._id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      fetchCustomers();
+      enqueueSnackbar('Customer deleted successfully', { variant: 'success' });
     } catch (error) {
-      console.error("Failed to delete customer:", error);
+      console.error("Failed to delete customer:", error.response ? error.response.data : error);
+    } finally {
+      setDeleteDialog(false);
     }
   };
 
+  const saveCustomer = async () => {
+    try {
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
+      }
+
+      const updatedCustomer = {
+        ...newCustomer,
+        location: {
+          type: "Point",
+          coordinates: [newCustomer.location.lng, newCustomer.location.lat]
+        },
+        address: newCustomer.address,
+      };
+
+      if (isEditing) {
+        await axios.put(`${BASE_URL}/User/user/${newCustomer._id}`, updatedCustomer, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Customer updated successfully', { variant: 'success' });
+      } else {
+        await axios.post(`${BASE_URL}/User/signup`, updatedCustomer, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Customer added successfully', { variant: 'success' });
+      }
+      setCustomerDialog(false);
+      fetchCustomers();
+    } catch (error) {
+      console.error('Failed to save customer', error);
+      enqueueSnackbar('Failed to save customer', { variant: 'error' });
+    }
+  };
+
+  const actionBodyTemplate = (rowData) => {
+    return (
+      <div className="button-container">
+        <Button icon="pi pi-pencil" className="p-button-rounded p-button-success mr-2" onClick={() => handleEdit(rowData)} />
+        <Button icon="pi pi-trash" className="p-button-rounded p-button-danger" onClick={() => confirmDeleteCustomer(rowData)} />
+      </div>
+    );
+  };
+
+  const locationBodyTemplate = (rowData) => {
+    const coordinatesExist = rowData.location && Array.isArray(rowData.location.coordinates) && rowData.location.coordinates.length === 2;
+    return coordinatesExist ? `Lat: ${rowData.location.coordinates[1]}, Lng: ${rowData.location.coordinates[0]}` : 'Location not provided';
+  };
+
+  const header = (
+    <div className="table-header">
+      <h5 className="mx-0 my-1">Manage Customers</h5>
+      <span className="custom-search">
+        <i className="pi pi-search" />
+        <InputText type="search" value={globalFilter} onInput={(e) => setGlobalFilter(e.target.value)} placeholder="Search" />
+      </span>
+    </div>
+  );
+
+  const leftToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="New" icon="pi pi-plus" className="p-button-success mr-2" onClick={openNew} />
+      </React.Fragment>
+    );
+  };
+
+  const rightToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="Export" icon="pi pi-upload" className="p-button-help" onClick={() => dt.current.exportCSV()} />
+      </React.Fragment>
+    );
+  };
+
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Container maxWidth="lg">
-        <Box sx={{ display: 'flex' }}>
-          <Sidebar />
-          <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-            <Typography variant="h4" gutterBottom align="center" color="primary.main">
-              Customer Management
-            </Typography>
-            <Button startIcon={<AddCircleOutlineIcon />} variant="contained" color="primary" onClick={handleOpenModal} sx={{ mb: 2 }}>
-              Add New Customer
-            </Button>
-            <Modal open={openModal} onClose={handleCloseModal}>
-              <Box sx={modalStyle} component="form" onSubmit={handleSubmit}>
-                <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-                  {isEditing ? 'Edit Customer' : 'Add New Customer'}
-                </Typography>
-                <TextField margin="normal" fullWidth label="First Name" name="firstname" value={currentCustomer.firstname} onChange={handleChange} />
-                <TextField margin="normal" fullWidth label="Last Name" name="lastname" value={currentCustomer.lastname} onChange={handleChange} />
-                <TextField margin="normal" fullWidth label="User Name" name="username" value={currentCustomer.username} onChange={handleChange} />
-                <TextField margin="normal" fullWidth label="Email" name="email" value={currentCustomer.email} onChange={handleChange} />
-                <TextField margin="normal" fullWidth label="Password" name="password" type="password" value={currentCustomer.password} onChange={handleChange} />
-                <MapContainer center={[currentCustomer.location.lat, currentCustomer.location.lng]} zoom={13} style={mapContainerStyle} scrollWheelZoom={false}>
-                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  <MapClick />
-                  <Marker position={[currentCustomer.location.lat, currentCustomer.location.lng]}>
-                    <Popup>Location</Popup>
-                  </Marker>
-                </MapContainer>
-                <Grid container spacing={2} sx={{ mt: 2 }}>
-                  <Grid item xs={6}>
-                    <TextField fullWidth label="Latitude" name="lat" value={currentCustomer.location.lat} onChange={handleChange} />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField fullWidth label="Longitude" name="lng" value={currentCustomer.location.lng} onChange={handleChange} />
-                  </Grid>
-                </Grid>
-                <TextField margin="normal" fullWidth label="Address" name="address" value={currentCustomer.address} onChange={handleChange} />
-                <FormControl fullWidth margin="normal">
-                  <InputLabel id="role-select-label">Role</InputLabel>
-                  <Select
-                    labelId="role-select-label"
-                    id="role-select"
-                    value={currentCustomer.role}
-                    label="Role"
-                    name="role"
-                    onChange={handleChange}
-                  >
-                    <MenuItem value="Customer">Customer</MenuItem>
-                    <MenuItem value="Vendor">Vendor</MenuItem>
-                    <MenuItem value="Admin">Admin</MenuItem>
-                  </Select>
-                </FormControl>
-                <Button type="submit" variant="contained" color="primary" sx={{ mt: 3 }}>
-                  {isEditing ? 'Update' : 'Add'}
-                </Button>
-              </Box>
-            </Modal>
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Customer ID</TableCell>
-                    <TableCell>First Name</TableCell>
-                    <TableCell>Last Name</TableCell>
-                    <TableCell>User Name</TableCell>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Password</TableCell>
-                    <TableCell>Location</TableCell>
-                    <TableCell>Address</TableCell>
-                    <TableCell>Role</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {customers.map((customer) => {
-                    console.log(customer); // Debugging line to check the customer object
-                    const coordinatesExist = customer.location && Array.isArray(customer.location.coordinates) && customer.location.coordinates.length === 2;
-                    return (
-                      <TableRow key={customer._id}>
-                        <TableCell>{customer.user ? customer.user._id : 'No data'}</TableCell>
-                        <TableCell>{customer.user ? customer.user.firstname : 'No data'}</TableCell>
-                        <TableCell>{customer.user ? customer.user.lastname : 'No data'}</TableCell>
-                        <TableCell>{customer.user ? customer.user.username : 'No data'}</TableCell>
-                        <TableCell>{customer.user ? customer.user.email : 'No data'}</TableCell>
-                        <TableCell>{'******'}</TableCell>
-                        <TableCell>
-                          {coordinatesExist
-                            ? `Lat: ${customer.location.coordinates[1]}, Lng: ${customer.location.coordinates[0]}`
-                            : 'Location not provided'}
-                        </TableCell>
-                        <TableCell>{customer.address || 'Address not provided'}</TableCell>
-                        <TableCell>{customer.user ? customer.user.role : 'No role'}</TableCell>
-                        <TableCell>{customer.user ? (customer.user.status === 'ACTIVE' ? 'Active' : 'Inactive') : 'No status'}</TableCell>
-                        <TableCell align="right">
-                          <IconButton color="primary" onClick={() => handleEdit(customer)}>
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton color="secondary" onClick={() => handleDelete(customer.user._id)}>
-                            <DeleteIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {customers.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={11} align="center">No customers found</TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
+    <Container maxWidth="xl" style={{ overflowX: 'hidden' }}>
+      <style jsx>{`
+        .custom-search {
+          display: flex;
+          align-items: center;
+        }
+        .custom-search .pi {
+          margin-right: 8px;
+        }
+        .button-container {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .button-container .p-button {
+          margin: 0 5px;
+        }
+      `}</style>
+      <Box sx={{ display: "flex", overflowX: 'hidden' }}>
+        <Sidebar />
+        <Box component="main" sx={{ flexGrow: 1, p: 3, overflowX: 'hidden' }}>
+          <Typography variant="h4" gutterBottom align="center">
+            Customers
+          </Typography>
+          <div className="card" style={{ overflowX: 'auto' }}>
+            <Toolbar className="mb-4" left={leftToolbarTemplate} right={rightToolbarTemplate}></Toolbar>
+            <DataTable
+              ref={dt}
+              value={customers}
+              paginator
+              header={header}
+              rows={10}
+              paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+              rowsPerPageOptions={[10, 25, 50]}
+              dataKey="_id"
+              selectionMode="checkbox"
+              globalFilter={globalFilter}
+              emptyMessage="No customers found."
+              currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+              tableStyle={{ minWidth: '100%' }}
+              showGridlines
+              stripedRows
+            >
+              <Column field="user._id" header="Customer ID" sortable filter filterPlaceholder="Search by ID" style={{ minWidth: '12rem' }} />
+              <Column field="user.firstname" header="First Name" sortable filter filterPlaceholder="Search by first name" style={{ minWidth: '12rem' }} />
+              <Column field="user.lastname" header="Last Name" sortable filter filterPlaceholder="Search by last name" style={{ minWidth: '12rem' }} />
+              <Column field="user.username" header="Username" sortable filter filterPlaceholder="Search by username" style={{ minWidth: '8rem' }} />
+              <Column field="user.email" header="Email" sortable filter filterPlaceholder="Search by email" style={{ minWidth: '9rem' }} />
+              <Column field="user.status" header="Status" sortable filter filterPlaceholder="Search by status" style={{ minWidth: '5rem' }} />
+              <Column field="location" header="Location" body={locationBodyTemplate} sortable filter filterPlaceholder="Search by location" style={{ minWidth: '12rem' }} />
+              <Column field="address" header="Address" sortable filter filterPlaceholder="Search by address" style={{ minWidth: '10rem' }} />
+              <Column header="Actions" headerStyle={{ width: '3rem', textAlign: 'center' }} bodyStyle={{ textAlign: 'center', overflow: 'visible' }} body={actionBodyTemplate} />
+            </DataTable>
+          </div>
+
+          <Dialog visible={customerDialog} style={{ width: '450px' }} header="Customer Details" modal className="p-fluid" footer={() => (
+            <>
+              <Button label="Cancel" icon="pi pi-times" className="p-button-text" onClick={hideDialog} />
+              <Button label="Save" icon="pi pi-check" className="p-button-text" onClick={saveCustomer} />
+            </>
+          )} onHide={hideDialog}>
+            <div className="p-field">
+              <label htmlFor="firstname">First Name</label>
+              <InputText id="firstname" value={newCustomer.firstname} onChange={handleChange} name="firstname" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="lastname">Last Name</label>
+              <InputText id="lastname" value={newCustomer.lastname} onChange={handleChange} name="lastname" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="username">Username</label>
+              <InputText id="username" value={newCustomer.username} onChange={handleChange} name="username" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="email">Email</label>
+              <InputText id="email" value={newCustomer.email} onChange={handleChange} name="email" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="password">Password</label>
+              <InputText id="password" value={newCustomer.password} onChange={handleChange} name="password" required type="password" />
+            </div>
+            <div className="p-field">
+              <label htmlFor="status">Status</label>
+              <Dropdown id="status" value={newCustomer.status} options={[{ label: 'Active', value: 'ACTIVE' }, { label: 'Inactive', value: 'INACTIVE' }]} onChange={(e) => handleChange({ target: { name: 'status', value: e.value } })} placeholder="Select a Status" />
+            </div>
+            <div className="p-field">
+              <label htmlFor="address">Address</label>
+              <InputText id="address" value={newCustomer.address} onChange={handleChange} name="address" required />
+            </div>
+            <div className="p-field">
+              <MapContainer center={[newCustomer.location.lat, newCustomer.location.lng]} zoom={13} style={mapContainerStyle} scrollWheelZoom={false}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <MapClick />
+                <Marker position={[newCustomer.location.lat, newCustomer.location.lng]}>
+                  <Popup>Location</Popup>
+                </Marker>
+              </MapContainer>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px' }}>
+                <InputText value={newCustomer.location.lat} name="lat" onChange={handleLatLngChange} placeholder="Latitude" />
+                <InputText value={newCustomer.location.lng} name="lng" onChange={handleLatLngChange} placeholder="Longitude" />
+              </div>
+            </div>
+          </Dialog>
+
+          <Dialog visible={deleteDialog} style={{ width: '450px' }} header="Confirm" modal footer={() => (
+            <>
+              <Button label="No" icon="pi pi-times" className="p-button-text" onClick={hideDeleteDialog} />
+              <Button label="Yes" icon="pi pi-check" className="p-button-text" onClick={handleDeleteCustomer} />
+            </>
+          )} onHide={hideDeleteDialog}>
+            <div className="confirmation-content">
+              <i className="pi pi-exclamation-triangle" style={{ fontSize: '2rem' }} />
+              {customerToDelete && <span>Are you sure you want to delete <b>{customerToDelete.user.firstname} {customerToDelete.user.lastname}</b>?</span>}
+            </div>
+          </Dialog>
         </Box>
-      </Container>
-    </ThemeProvider>
+      </Box>
+    </Container>
   );
 };
 
 export default CustomersPage;
+
+

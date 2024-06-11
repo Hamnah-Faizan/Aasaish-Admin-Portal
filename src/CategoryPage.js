@@ -1,56 +1,32 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
-  Button, Table, IconButton, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, Modal, Box, TextField, Container, createTheme, ThemeProvider, CssBaseline
+  Typography, Container, Box
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import { blue, pink } from '@mui/material/colors';
 import Sidebar from './Sidebar';
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: blue[500],
-    },
-    secondary: {
-      main: pink['A400'],
-    },
-  },
-});
-
-const modalStyle = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: '90%',
-  maxWidth: '400px',
-  bgcolor: 'background.paper',
-  borderRadius: '16px',
-  p: 4,
-  overflowY: 'auto',
-  maxHeight: '90vh',
-};
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { Dialog } from 'primereact/dialog';
+import { InputText } from 'primereact/inputtext';
+import { Toolbar } from 'primereact/toolbar';
+import { Button } from 'primereact/button';
+import { useSnackbar } from 'notistack';
+import 'primereact/resources/themes/saga-blue/theme.css';
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+import 'primeflex/primeflex.css';
+import { BASE_URL } from './config';
 
 const CategoriesPage = () => {
+  const { enqueueSnackbar } = useSnackbar();
   const [categories, setCategories] = useState([]);
-  const [open, setOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState({ name: '', description: '' });
   const [isEditing, setIsEditing] = useState(false);
-  const [currentCategory, setCurrentCategory] = useState({
-    name: '',
-    description: '',
-  });
-
-  const fetchCategories = async () => {
-    try {
-      const { data } = await axios.get(`http://localhost:4000/Category/categories`);
-      setCategories(data);
-    } catch (error) {
-      console.error("Failed to fetch categories:", error);
-    }
-  };
+  const [categoryDialog, setCategoryDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
+  const dt = useRef(null);
+  const [globalFilter, setGlobalFilter] = useState('');
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -58,114 +34,210 @@ const CategoriesPage = () => {
     fetchCategories();
   }, []);
 
-  const handleOpen = () => {
-    console.log('Opening modal...');
-    setOpen(true);
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${BASE_URL}/Category/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error("Failed to fetch categories:", error);
+    }
+  };
+
+  const openNew = () => {
+    setNewCategory({ name: '', description: '' });
     setIsEditing(false);
-    setCurrentCategory({
-      name: '',
-      description: '',
-    });
+    setCategoryDialog(true);
   };
 
-  const handleEdit = (category) => {
-    setOpen(true);
-    setIsEditing(true);
-    setCurrentCategory(category);
+  const hideDialog = () => {
+    setCategoryDialog(false);
   };
 
-  const handleClose = () => setOpen(false);
+  const hideDeleteDialog = () => {
+    setDeleteDialog(false);
+    setCategoryToDelete(null);
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setCurrentCategory(prevState => ({
+    setNewCategory(prevState => ({
       ...prevState,
       [name]: value,
     }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    console.log('Submitting form...', currentCategory);
+  const handleEdit = (category) => {
+    setNewCategory(category);
+    setIsEditing(true);
+    setCategoryDialog(true);
+  };
+
+  const confirmDeleteCategory = (category) => {
+    setCategoryToDelete(category);
+    setDeleteDialog(true);
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!categoryToDelete) {
+      console.error("Category ID is undefined, cannot delete");
+      return;
+    }
+
     try {
-      if (isEditing) {
-        await axios.put(`http://localhost:4000/Category/updatecategory/${currentCategory._id}`, currentCategory);
-      } else {
-        await axios.post(`http://localhost:4000/Category/createcategory`, currentCategory);
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
       }
-      setOpen(false);
-      await fetchCategories();
+      await axios.delete(`${BASE_URL}/Category/deletecategory/${categoryToDelete._id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      fetchCategories();
+      enqueueSnackbar('Category deleted successfully', { variant: 'success' });
     } catch (error) {
-      console.error("Failed to submit category:", error);
+      console.error("Failed to delete category:", error.response ? error.response.data : error);
+    } finally {
+      setDeleteDialog(false);
     }
   };
 
-  const handleDelete = async (id) => {
+  const saveCategory = async () => {
     try {
-      await axios.delete(`http://localhost:4000/Category/deletecategory/${id}`);
-      await fetchCategories();
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
+      }
+      if (isEditing) {
+        await axios.put(`${BASE_URL}/Category/updatecategory/${newCategory._id}`, newCategory, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Category updated successfully', { variant: 'success' });
+      } else {
+        await axios.post(`${BASE_URL}/Category/createcategory`, newCategory, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Category added successfully', { variant: 'success' });
+      }
+      setCategoryDialog(false);
+      fetchCategories();
     } catch (error) {
-      console.error("Failed to delete category:", error);
+      console.error('Failed to save category', error);
+      enqueueSnackbar('Failed to save category', { variant: 'error' });
     }
+  };
+
+  const actionBodyTemplate = (rowData) => {
+    return (
+      <div className="button-container">
+        <Button icon="pi pi-pencil" className="p-button-rounded p-button-success mr-2" onClick={() => handleEdit(rowData)} />
+        <Button icon="pi pi-trash" className="p-button-rounded p-button-danger" onClick={() => confirmDeleteCategory(rowData)} />
+      </div>
+    );
+  };
+
+  const header = (
+    <div className="table-header">
+      <h5 className="mx-0 my-1">Manage Categories</h5>
+      <span className="custom-search">
+        <i className="pi pi-search" />
+        <InputText type="search" value={globalFilter} onInput={(e) => setGlobalFilter(e.target.value)} placeholder="Search" />
+      </span>
+    </div>
+  );
+
+  const leftToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="New" icon="pi pi-plus" className="p-button-success mr-2" onClick={openNew} />
+      </React.Fragment>
+    );
+  };
+
+  const rightToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="Export" icon="pi pi-upload" className="p-button-help" onClick={() => dt.current.exportCSV()} />
+      </React.Fragment>
+    );
   };
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Container maxWidth="lg">
-        <Box sx={{ display: 'flex' }}>
-          <Sidebar />
-          <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-            <Typography variant="h4" gutterBottom align="center" color="primary.main">
-          Category Management
-        </Typography>
-        <Button startIcon={<AddCircleOutlineIcon />} variant="contained" color="primary" onClick={handleOpen} sx={{ mb: 2 }}>
-          Add New Category
-        </Button>
-        <Modal open={open} onClose={handleClose}>
-          <Box sx={modalStyle} component="form" onSubmit={handleSubmit}>
-            <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-              {isEditing ? 'Edit Category' : 'Add New Category'}
-            </Typography>
-            <TextField margin="normal" fullWidth label="Name" name="name" value={currentCategory.name} onChange={handleChange} />
-            <TextField margin="normal" fullWidth label="Description" name="description" value={currentCategory.description} onChange={handleChange} />
-            <Button type="submit" variant="contained" color="primary" sx={{ mt: 3 }}>
-              {isEditing ? 'Update' : 'Add'}
-            </Button>
-          </Box>
-        </Modal>
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {categories.map((category) => (
-                <TableRow key={category._id}>
-                  <TableCell>{category.name}</TableCell>
-                  <TableCell>{category.description}</TableCell>
-                  <TableCell align="right">
-                    <IconButton color="primary" onClick={() => handleEdit(category)}>
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton color="secondary" onClick={() => handleDelete(category._id)}>
-                      <DeleteIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+    <Container maxWidth="xl">
+       <style jsx>{`
+        .custom-search {
+          display: flex;
+          align-items: center;
+        }
+        .custom-search .pi {
+          margin-right: 8px;
+        }
+        .button-container {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .button-container .p-button {
+          margin: 0 5px;
+        }
+      `}</style>
+      <Box sx={{ display: "flex" }}>
+        <Sidebar />
+        <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+          <Typography variant="h4" gutterBottom align="center">
+            Categories
+          </Typography>
+          <div className="card">
+            <Toolbar className="mb-4" left={leftToolbarTemplate} right={rightToolbarTemplate}></Toolbar>
+            <DataTable
+              ref={dt}
+              value={categories}
+              paginator
+              header={header}
+              rows={10}
+              paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+              rowsPerPageOptions={[10, 25, 50]}
+              dataKey="_id"
+              selectionMode="checkbox"
+              globalFilter={globalFilter}
+              emptyMessage="No categories found."
+              currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+              tableStyle={{ minWidth: '50rem' }}
+              showGridlines
+              stripedRows
+            >
+              <Column field="name" header="Name" sortable filter filterPlaceholder="Search by name" style={{ minWidth: '14rem' }} />
+              <Column field="description" header="Description" sortable filter filterPlaceholder="Search by description" style={{ minWidth: '14rem' }} />
+              <Column header="Actions" headerStyle={{ width: '5rem', textAlign: 'center' }} bodyStyle={{ textAlign: 'center', overflow: 'visible' }} body={actionBodyTemplate} />
+            </DataTable>
+          </div>
+
+          <Dialog visible={categoryDialog} style={{ width: '450px' }} header="Category Details" modal className="p-fluid" footer={() => (
+            <>
+              <Button label="Cancel" icon="pi pi-times" className="p-button-text" onClick={hideDialog} />
+              <Button label="Save" icon="pi pi-check" className="p-button-text" onClick={saveCategory} />
+            </>
+          )} onHide={hideDialog}>
+            <div className="p-field">
+              <label htmlFor="name">Name</label>
+              <InputText id="name" value={newCategory.name} onChange={handleChange} name="name" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="description">Description</label>
+              <InputText id="description" value={newCategory.description} onChange={handleChange} name="description" required />
+            </div>
+          </Dialog>
+
+          <Dialog visible={deleteDialog} style={{ width: '450px' }} header="Confirm" modal footer={() => (
+            <>
+              <Button label="No" icon="pi pi-times" className="p-button-text" onClick={hideDeleteDialog} />
+              <Button label="Yes" icon="pi pi-check" className="p-button-text" onClick={handleDeleteCategory} />
+            </>
+          )} onHide={hideDeleteDialog}>
+            <div className="confirmation-content">
+              <i className="pi pi-exclamation-triangle" style={{ fontSize: '2rem' }} />
+              {categoryToDelete && <span>Are you sure you want to delete <b>{categoryToDelete.name}</b>?</span>}
+            </div>
+          </Dialog>
         </Box>
-        </Box>
-      </Container>
-    </ThemeProvider>
+      </Box>
+    </Container>
   );
 };
 
 export default CategoriesPage;
+

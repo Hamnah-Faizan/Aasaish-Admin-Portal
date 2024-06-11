@@ -1,59 +1,45 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
-  Button, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, IconButton, Modal, Box, TextField, Grid, Container, MenuItem, createTheme, ThemeProvider, CssBaseline
+  Typography, Container, Box
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import { blue, pink } from '@mui/material/colors';
 import Sidebar from './Sidebar';
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: blue[500],
-    },
-    secondary: {
-      main: pink['A400'],
-    },
-  },
-});
-
-const modalStyle = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: '90%',
-  maxWidth: '600px',
-  bgcolor: 'background.paper',
-  borderRadius: '16px',
-  p: 4,
-  overflowY: 'auto',
-  maxHeight: '90vh',
-};
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { Dialog } from 'primereact/dialog';
+import { InputText } from 'primereact/inputtext';
+import { Toolbar } from 'primereact/toolbar';
+import { Button } from 'primereact/button';
+import { useSnackbar } from 'notistack';
+import { Dropdown } from 'primereact/dropdown';
+import 'primereact/resources/themes/saga-blue/theme.css';
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+import 'primeflex/primeflex.css';
+import { BASE_URL } from './config';
 
 const CollectionsPage = () => {
+  const { enqueueSnackbar } = useSnackbar();
   const [collections, setCollections] = useState([]);
   const [brands, setBrands] = useState([]);
-  const [openCollectionModal, setOpenCollectionModal] = useState(false);
-  const [currentCollection, setCurrentCollection] = useState({ name: '', description: '', brand: '', products: [], imageUrl: '' });
-  const [isEditingCollection, setIsEditingCollection] = useState(false);
+  const [newCollection, setNewCollection] = useState({ name: '', description: '', brand: '', products: [], imageUrl: '' });
+  const [isEditing, setIsEditing] = useState(false);
+  const [collectionDialog, setCollectionDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [collectionToDelete, setCollectionToDelete] = useState(null);
+  const dt = useRef(null);
+  const [globalFilter, setGlobalFilter] = useState('');
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     fetchCollections();
     fetchBrands();
   }, []);
 
   const fetchCollections = async () => {
     try {
-      const accessToken = localStorage.getItem('token');
-      if (!accessToken) {
-        console.error("Access token not available.");
-        return;
-      }
-      const response = await axios.get('http://localhost:4000/Collection/collections', { headers: { Authorization: `Bearer ${accessToken}` } });
+      const response = await axios.get(`${BASE_URL}/Collection/collections`);
       setCollections(response.data);
     } catch (error) {
       console.error("Failed to fetch collections:", error);
@@ -62,165 +48,233 @@ const CollectionsPage = () => {
 
   const fetchBrands = async () => {
     try {
-      const accessToken = localStorage.getItem('token');
-      if (!accessToken) {
-        console.error("Access token not available.");
-        return;
-      }
-      const response = await axios.get('http://localhost:4000/Brand/getbrands', { headers: { Authorization: `Bearer ${accessToken}` } });
+      const response = await axios.get(`${BASE_URL}/Brand/getbrands`);
       setBrands(response.data);
     } catch (error) {
       console.error("Failed to fetch brands:", error);
     }
   };
 
-  const handleOpenCollectionModal = () => {
-    setOpenCollectionModal(true);
-    setCurrentCollection({ name: '', description: '', brand: '', products: [], images: '' });
-    setIsEditingCollection(false);
+  const openNew = () => {
+    setNewCollection({ name: '', description: '', brand: '', products: [], imageUrl: '' });
+    setIsEditing(false);
+    setCollectionDialog(true);
   };
 
-  const handleCloseCollectionModal = () => {
-    setOpenCollectionModal(false);
+  const hideDialog = () => {
+    setCollectionDialog(false);
   };
 
-  const handleChangeCollection = (e) => {
+  const hideDeleteDialog = () => {
+    setDeleteDialog(false);
+    setCollectionToDelete(null);
+  };
+
+  const handleChange = (e) => {
     const { name, value } = e.target;
-    setCurrentCollection(prevState => ({
+    setNewCollection(prevState => ({
       ...prevState,
       [name]: value,
     }));
   };
 
-  const handleSubmitCollection = async (id) => {
-
-    const accessToken = localStorage.getItem('token');
-    if (!accessToken) {
-        console.error("Access token not available.");
-        return;
-    }
-
-    // Using id directly from arguments when editing
-    if (isEditingCollection) {
-        try {
-            await axios.put(`http://localhost:4000/Collection/updatecollections/${id}`, currentCollection, {
-                headers: { Authorization: `Bearer ${accessToken}` }
-            });
-            handleCloseCollectionModal();
-            await fetchCollections();
-        } catch (error) {
-            console.error("Failed to update collection:", error);
-        }
-    } else {
-        // Handle create new collection case
-        try {
-            await axios.post('http://localhost:4000/Collection/createcollection', currentCollection, {
-                headers: { Authorization: `Bearer ${accessToken}` }
-            });
-            handleCloseCollectionModal();
-            await fetchCollections();
-        } catch (error) {
-            console.error("Failed to add new collection:", error);
-        }
-    }
-};
-
-  const handleEditCollection = (id) => {
-    const collectionToEdit = collections.find((collection) => collection._id === id);
-    if (collectionToEdit) {
-      setCurrentCollection(collectionToEdit);
-      setOpenCollectionModal(true);
-      setIsEditingCollection(true);
-    } else {
-      console.error("Collection not found");
-    }
+  const handleEdit = (collection) => {
+    setNewCollection(collection);
+    setIsEditing(true);
+    setCollectionDialog(true);
   };
-  
-  const handleDeleteCollection = async (id) => {
+
+  const confirmDeleteCollection = (collection) => {
+    setCollectionToDelete(collection);
+    setDeleteDialog(true);
+  };
+
+  const handleDeleteCollection = async () => {
+    if (!collectionToDelete) {
+      console.error("Collection ID is undefined, cannot delete");
+      return;
+    }
+
     try {
       const accessToken = localStorage.getItem('token');
       if (!accessToken) {
         console.error("Access token not available.");
         return;
       }
-      await axios.delete(`http://localhost:4000/Collection/deletecollections/${id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-      await fetchCollections();
+      await axios.delete(`${BASE_URL}/Collection/deletecollections/${collectionToDelete._id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      fetchCollections();
+      enqueueSnackbar('Collection deleted successfully', { variant: 'success' });
     } catch (error) {
-      console.error("Failed to delete collection:", error);
+      console.error("Failed to delete collection:", error.response ? error.response.data : error);
+    } finally {
+      setDeleteDialog(false);
     }
   };
 
+  const saveCollection = async () => {
+    try {
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
+      }
+      if (isEditing) {
+        await axios.put(`${BASE_URL}/Collection/updatecollections/${newCollection._id}`, newCollection, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Collection updated successfully', { variant: 'success' });
+      } else {
+        await axios.post(`${BASE_URL}/Collection/createcollection`, newCollection, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Collection added successfully', { variant: 'success' });
+      }
+      setCollectionDialog(false);
+      fetchCollections();
+    } catch (error) {
+      console.error('Failed to save collection', error);
+      enqueueSnackbar('Failed to save collection', { variant: 'error' });
+    }
+  };
+
+  const actionBodyTemplate = (rowData) => {
+    return (
+      <div className="button-container">
+        <Button icon="pi pi-pencil" className="p-button-rounded p-button-success mr-2" onClick={() => handleEdit(rowData)} />
+        <Button icon="pi pi-trash" className="p-button-rounded p-button-danger" onClick={() => confirmDeleteCollection(rowData)} />
+      </div>
+    );
+  };
+
+  const brandBodyTemplate = (rowData) => {
+    return rowData.brand.name;
+  };
+  
+  const brandFilterTemplate = (options) => {
+    return (
+      <Dropdown
+        value={options.value}
+        options={brands.map(brand => ({ label: brand.name, value: brand.name }))}
+        onChange={(e) => options.filterApplyCallback(e.value)}
+        placeholder="Select a Brand"
+        className="p-column-filter"
+        showClear
+      />
+    );
+  };
+
+  const header = (
+    <div className="table-header">
+      <h5 className="mx-0 my-1">Manage Collections</h5>
+      <span className="custom-search">
+        <i className="pi pi-search" />
+        <InputText type="search" value={globalFilter} onInput={(e) => setGlobalFilter(e.target.value)} placeholder="Search" />
+      </span>
+    </div>
+  );
+
+  const leftToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="New" icon="pi pi-plus" className="p-button-success mr-2" onClick={openNew} />
+      </React.Fragment>
+    );
+  };
+
+  const rightToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="Export" icon="pi pi-upload" className="p-button-help" onClick={() => dt.current.exportCSV()} />
+      </React.Fragment>
+    );
+  };
+
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Container maxWidth="lg">
-        <Box sx={{ display: 'flex' }}>
-          <Sidebar />
-          <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-            <Typography variant="h4" gutterBottom align="center" color="primary.main">
-              Collections
-            </Typography>
+    <Container maxWidth="xl">
+       <style jsx>{`
+        .custom-search {
+          display: flex;
+          align-items: center;
+        }
+        .custom-search .pi {
+          margin-right: 8px;
+        }
+        .button-container {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .button-container .p-button {
+          margin: 0 5px;
+        }
+      `}</style>
+      <Box sx={{ display: "flex", overflowX: 'hidden' }}>
+        <Sidebar />
+        <Box component="main" sx={{ flexGrow: 1, p: 3, overflowX: 'hidden' }}>
+          <Typography variant="h4" gutterBottom align="center">
+            Collections
+          </Typography>
+          <div className="card" style={{ overflowX: 'auto' }}>
+            <Toolbar className="mb-4" left={leftToolbarTemplate} right={rightToolbarTemplate}></Toolbar>
+            <DataTable
+              ref={dt}
+              value={collections}
+              paginator
+              header={header}
+              rows={10}
+              paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+              rowsPerPageOptions={[10, 25, 50]}
+              dataKey="_id"
+              selectionMode="checkbox"
+              globalFilter={globalFilter}
+              emptyMessage="No collections found."
+              currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+              tableStyle={{ minWidth: '100%' }}
+              showGridlines
+              stripedRows
+            >
+              <Column field="name" header="Name" sortable filter filterPlaceholder="Search by name" style={{ minWidth: '12rem' }} />
+              <Column field="description" header="Description" sortable filter filterPlaceholder="Search by description" style={{ minWidth: '12rem' }} />
+              <Column field="brand" header="Brand" body={brandBodyTemplate} sortable filter filterElement={brandFilterTemplate} style={{ minWidth: '12rem' }} />
+              {/* <Column field="imageUrl" header="Image URL" sortable filter filterPlaceholder="Search by image URL" style={{ minWidth: '12rem' }} /> */}
+              <Column header="Actions" headerStyle={{ width: '8rem', textAlign: 'center' }} bodyStyle={{ textAlign: 'center', overflow: 'visible' }} body={actionBodyTemplate} />
+            </DataTable>
+          </div>
 
-            <Modal open={openCollectionModal} onClose={handleCloseCollectionModal}>
-              <Box sx={modalStyle} component="form" onSubmit={handleSubmitCollection}>
-                <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-                  {isEditingCollection ? "Edit Collection" : "Add New Collection"}
-                </Typography>
-                <TextField margin="normal" fullWidth label="Name" name="name" value={currentCollection.name} onChange={handleChangeCollection} />
-                <TextField margin="normal" fullWidth label="Description" name="description" value={currentCollection.description} onChange={handleChangeCollection} />
-                <TextField margin="normal" fullWidth label="Brand" name="brand" select value={currentCollection.brand} onChange={handleChangeCollection}>
-                  {brands.map((brand) => (
-                    <MenuItem key={brand._id} value={brand._id}>
-                      {brand.name}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField margin="normal" fullWidth label="Image Url" name="images" value={currentCollection.images} onChange={handleChangeCollection} />
-                <Button type="submit" variant="contained" color="primary" sx={{ mt: 3 }}>
-                  {isEditingCollection ? "Update" : "Add"}
-                </Button>
-              </Box>
-            </Modal>
+          <Dialog visible={collectionDialog} style={{ width: '450px' }} header="Collection Details" modal className="p-fluid" footer={() => (
+            <>
+              <Button label="Cancel" icon="pi pi-times" className="p-button-text" onClick={hideDialog} />
+              <Button label="Save" icon="pi pi-check" className="p-button-text" onClick={saveCollection} />
+            </>
+          )} onHide={hideDialog}>
+            <div className="p-field">
+              <label htmlFor="name">Name</label>
+              <InputText id="name" value={newCollection.name} onChange={handleChange} name="name" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="description">Description</label>
+              <InputText id="description" value={newCollection.description} onChange={handleChange} name="description" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="brand">Brand</label>
+              <Dropdown id="brand" value={newCollection.brand} options={brands.map(brand => ({ label: brand.name, value: brand._id }))} onChange={(e) => handleChange({ target: { name: 'brand', value: e.value } })} placeholder="Select a Brand" />
+            </div>
+            <div className="p-field">
+              <label htmlFor="imageUrl">Image URL</label>
+              <InputText id="imageUrl" value={newCollection.imageUrl} onChange={handleChange} name="imageUrl" required />
+            </div>
+          </Dialog>
 
-            <Button startIcon={<AddCircleOutlineIcon />} variant="contained" color="primary" onClick={handleOpenCollectionModal} sx={{ mb: 2 }}>
-              Add New Collection
-            </Button>
-
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Description</TableCell>
-                    <TableCell>Brand</TableCell>
-                    <TableCell>Image URL</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {collections.map((collection) => (
-                    <TableRow key={collection._id}>
-                      <TableCell>{collection.name}</TableCell>
-                      <TableCell>{collection.description}</TableCell>
-                      <TableCell>{collection.brand.name}</TableCell> 
-                      <TableCell>{collection.images}</TableCell>
-                      <TableCell align="right">
-                        <IconButton color="primary" onClick={() => handleEditCollection(collection._id)}>
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton color="secondary" onClick={() => handleDeleteCollection(collection._id)}>
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
+          <Dialog visible={deleteDialog} style={{ width: '450px' }} header="Confirm" modal footer={() => (
+            <>
+              <Button label="No" icon="pi pi-times" className="p-button-text" onClick={hideDeleteDialog} />
+              <Button label="Yes" icon="pi pi-check" className="p-button-text" onClick={handleDeleteCollection} />
+            </>
+          )} onHide={hideDeleteDialog}>
+            <div className="confirmation-content">
+              <i className="pi pi-exclamation-triangle" style={{ fontSize: '2rem' }} />
+              {collectionToDelete && <span>Are you sure you want to delete <b>{collectionToDelete.name}</b>?</span>}
+            </div>
+          </Dialog>
         </Box>
-      </Container>
-    </ThemeProvider>
+      </Box>
+    </Container>
   );
 };
 

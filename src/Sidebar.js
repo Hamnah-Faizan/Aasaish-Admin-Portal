@@ -2,23 +2,33 @@ import React from 'react';
 import { Drawer, List, ListItem, ListItemIcon, ListItemText, Typography, Box } from '@mui/material';
 import { Link } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/HomeOutlined';
-import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasketOutlined';
-import LocalOfferIcon from '@mui/icons-material/LocalOfferOutlined';
-import ExitToAppIcon from '@mui/icons-material/ExitToAppOutlined';
-import StorefrontIcon from '@mui/icons-material/StorefrontOutlined';
+import PeopleIcon from '@mui/icons-material/PeopleOutlined';
+import StoreIcon from '@mui/icons-material/StoreOutlined';
+import BrandingWatermarkIcon from '@mui/icons-material/BrandingWatermarkOutlined';
+import InventoryIcon from '@mui/icons-material/InventoryOutlined';
+import CategoryIcon from '@mui/icons-material/CategoryOutlined';
+import CollectionsIcon from '@mui/icons-material/CollectionsOutlined';
+import LabelIcon from '@mui/icons-material/LabelOutlined';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCartOutlined';
+import AssignmentIcon from '@mui/icons-material/AssignmentOutlined';
+import BookOnlineIcon from '@mui/icons-material/BookOnlineOutlined';
 
 function Sidebar({ handleItemClick }) {
   const items = [
-    { text: 'CUSTOMERS', icon: <HomeIcon /> },
-    { text: 'VENDORS', icon: <HomeIcon /> },
-    { text: 'STORES', icon: <ShoppingBasketIcon /> },
-    { text: 'BRANDS', icon: <StorefrontIcon /> },
-    { text: 'INVENTORY', icon: <LocalOfferIcon /> },
-    { text: 'CATEGORIES', icon: <LocalOfferIcon /> },
-    { text: 'COLLECTIONS', icon: <ExitToAppIcon /> },
-    { text: 'TAGS', icon: <ExitToAppIcon /> },
-    { text: 'PRODUCTS', icon: <ExitToAppIcon /> },
+    { text: 'DASHBOARD', icon: <HomeIcon /> },
+    { text: 'CUSTOMERS', icon: <PeopleIcon /> },
+    { text: 'VENDORS', icon: <PeopleIcon /> },
+    { text: 'BRANDS', icon: <BrandingWatermarkIcon /> },
+    { text: 'STORES', icon: <StoreIcon /> },
+    { text: 'CATEGORIES', icon: <CategoryIcon /> },
+    { text: 'COLLECTIONS', icon: <CollectionsIcon /> },
+    { text: 'TAGS', icon: <LabelIcon /> },
+    { text: 'PRODUCTS', icon: <ShoppingCartIcon /> },
+    { text: 'INVENTORY', icon: <InventoryIcon /> },
+    { text: 'ORDERS', icon: <AssignmentIcon /> },
+    { text: 'RESERVATION', icon: <BookOnlineIcon /> },
   ];
+
 
   return (
     <Drawer
@@ -35,6 +45,11 @@ function Sidebar({ handleItemClick }) {
           borderRadius: '0px 25px 25px 0px', // Rounded corners on the right
           paddingTop: '20px', // Top padding
           paddingBottom: '20px', // Bottom padding
+          // '::-webkit-scrollbar': {
+          //   display: 'none', // Hide scrollbar for Chrome, Safari, and Opera
+          // },
+          // '-ms-overflow-style': 'none', // Hide scrollbar for IE and Edge
+          // 'scrollbar-width': 'none', // Hide scrollbar for Firefox
         },
       }}
     >
@@ -69,15 +84,18 @@ function Sidebar({ handleItemClick }) {
             }}
           >
             <ListItemIcon sx={{ color: 'gray', minWidth: '40px' }}>
-              {index === 0 && <HomeIcon />}
-              {index === 1 && <ShoppingBasketIcon />}
-              {index === 2 && <StorefrontIcon />}
-              {index === 3 && <LocalOfferIcon />}
-              {index === 4 && <ExitToAppIcon />}
-              {index === 5 && <ExitToAppIcon />}
-              {index === 6 && <ExitToAppIcon />}
-              {index === 7 && <ExitToAppIcon />}
-              {index === 8 && <ExitToAppIcon />}
+            {index === 0 && <HomeIcon />}
+                {index === 1 && <PeopleIcon />}
+                {index === 2 && <PeopleIcon />}
+                {index === 3 && <BrandingWatermarkIcon />}
+                {index === 4 && <StoreIcon />}
+                {index === 5 && <CategoryIcon />}
+                {index === 6 && <CollectionsIcon />}
+                {index === 7 && <LabelIcon />}
+                {index === 8 && <ShoppingCartIcon />}
+                {index === 9 && <InventoryIcon />}
+                {index === 10 && <AssignmentIcon />}
+                {index === 11 && <BookOnlineIcon />}
             </ListItemIcon>
             <ListItemText primary={item.text} sx={{ '& .MuiTypography-root': { fontWeight: 'medium' } }} />
           </ListItem>

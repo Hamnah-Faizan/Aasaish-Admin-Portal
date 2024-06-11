@@ -1,193 +1,299 @@
-import React, { useState, useEffect } from 'react';
-
-// Importing Axios for HTTP requests
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-
-// Importing Material-UI components
 import {
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  FormControlLabel, Paper, Typography, IconButton, Button, Modal, Box,
-  Checkbox, TextField, Container, Select, Menu, MenuItem, InputLabel,
-  FormControl, Chip, OutlinedInput, Grid, List, ListItem, ListItemText
+  Typography, Container, Box, CircularProgress
 } from '@mui/material';
-
-// Importing Firebase storage functions
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from './firebase'; 
-
-// Importing custom components and icons
 import Sidebar from './Sidebar';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import AddIcon from '@mui/icons-material/Add';
-
-// Importing Snackbar for notifications
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { Dialog } from 'primereact/dialog';
+import { InputText } from 'primereact/inputtext';
+import { Toolbar } from 'primereact/toolbar';
+import { Button } from 'primereact/button';
 import { useSnackbar } from 'notistack';
+import 'primereact/resources/themes/saga-blue/theme.css';
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+import 'primeflex/primeflex.css';
 import { BASE_URL } from './config';
 
-function InventoryPage() {
-  // Snackbar for user notifications
-  const { enqueueSnackbar } = useSnackbar(); 
-
-  // State for managing product data
+const InventoryPage = () => {
+  const { enqueueSnackbar } = useSnackbar();
   const [products, setProducts] = useState([]);
-
-  // State for inventory details
-  const [inventory, setInventory] = useState({
-    storeId: '',
-    variants: [{ color: '', size: '', quantity: '' }],
-    offers: { discountPercentage: '', description: '', validUntil: '' }
-  });
-
-  // State for vendor details
-  const [currentVendor, setCurrentVendor] = useState({
+  const [newProduct, setNewProduct] = useState({
     name: '',
-    brand: '',
-    store: '',
+    variants: [{ color: '', size: '', quantity: '' }],
   });
-
-  // State for editing controls
   const [isEditing, setIsEditing] = useState(false);
-  const [currentProduct, setCurrentProduct] = useState({});
+  const [productDialog, setProductDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [productToDelete, setProductToDelete] = useState(null);
+  const dt = useRef(null);
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [loading, setLoading] = useState(true);
 
-// Snackbar Notifications -----------------------
-// These functions handle showing snackbar notifications
-const showSuccessSnackbar = (message) => {
-  enqueueSnackbar(message, { variant: 'success', anchorOrigin: {
-    vertical: 'top',
-    horizontal: 'right',
-  }, autoHideDuration: 1000 }); // Notification appears for 1 second
-};
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    fetchProducts();
+  }, []);
 
-// API Initialization -----------------------
-// Setup common API configurations and fetch initial data
-useEffect(() => {
-  const token = localStorage.getItem('token');
-  axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-  
-  // fetchVendorDetails();
-  fetchProducts();
-}, []);
+  const fetchProducts = async () => {
+    try {
+      const response = await axios.get(`${BASE_URL}/Product/getproducts`);
+      setProducts(response.data);
+      setLoading(false);
+    } catch (error) {
+      console.error("Failed to fetch products:", error);
+      setLoading(false);
+    }
+  };
 
+  const openNew = () => {
+    setNewProduct({
+      name: '',
+      variants: [{ color: '', size: '', quantity: '' }],
+    });
+    setIsEditing(false);
+    setProductDialog(true);
+  };
 
-// Product Management -----------------------
-// Functions to handle CRUD operations on products
-const fetchProducts = async () => {
-  try {
+  const hideDialog = () => {
+    setProductDialog(false);
+  };
 
-    const response = await axios.get(`${BASE_URL}/Product/getproducts`);
-    setProducts(response.data);
-  } catch (error) {
-    console.error("Failed to fetch products:", error);
-  }
-};
+  const hideDeleteDialog = () => {
+    setDeleteDialog(false);
+    setProductToDelete(null);
+  };
 
-// Inside the InventoryPage component
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setNewProduct(prevState => ({
+      ...prevState,
+      [name]: value,
+    }));
+  };
 
-const handleEdit = async (productId) => {
-  // Fetch the product details based on the productId
-  try {
-    const response = await axios.get(`${BASE_URL}/Product/updateproducts/${productId}`);
-    setCurrentProduct(response.data);
+  const handleVariantChange = (index, event) => {
+    const updatedVariants = newProduct.variants.map((variant, i) =>
+      i === index ? { ...variant, [event.target.name]: event.target.value } : variant
+    );
+    setNewProduct({ ...newProduct, variants: updatedVariants });
+  };
+
+  const handleAddVariant = () => {
+    setNewProduct({
+      ...newProduct,
+      variants: [...newProduct.variants, { color: '', size: '', quantity: '' }],
+    });
+  };
+
+  const handleRemoveVariant = (index) => {
+    const filteredVariants = newProduct.variants.filter((_, i) => i !== index);
+    setNewProduct({ ...newProduct, variants: filteredVariants });
+  };
+
+  const handleEdit = (product) => {
+    setNewProduct(product);
     setIsEditing(true);
-  } catch (error) {
-    console.error("Failed to fetch product for editing:", error);
-  }
-};
+    setProductDialog(true);
+  };
 
-const handleDelete = async (productId) => {
-  // Delete the product based on the productId
-  try {
-    await axios.delete(`${BASE_URL}/Product/deleteproducts/${productId}`);
-    showSuccessSnackbar('Product deleted successfully!');
-    fetchProducts(); // Refresh the product list after deletion
-  } catch (error) {
-    console.error("Failed to delete product:", error);
-    enqueueSnackbar('Failed to delete product!', { variant: 'error' });
-  }
-};
+  const confirmDeleteProduct = (product) => {
+    setProductToDelete(product);
+    setDeleteDialog(true);
+  };
 
+  const handleDeleteProduct = async () => {
+    if (!productToDelete) {
+      console.error("Product ID is undefined, cannot delete");
+      return;
+    }
 
-// Inventory Variants -----------------------
-// Functions to handle inventory variants
-const handleVariantChange = (index, event) => {
-  const updatedVariants = inventory.variants.map((variant, i) =>
-    i === index ? { ...variant, [event.target.name]: event.target.value } : variant
+    try {
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
+      }
+      await axios.delete(`${BASE_URL}/Product/deleteproducts/${productToDelete.id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      fetchProducts();
+      enqueueSnackbar('Product deleted successfully', { variant: 'success' });
+    } catch (error) {
+      console.error("Failed to delete product:", error.response ? error.response.data : error);
+    } finally {
+      setDeleteDialog(false);
+    }
+  };
+
+  const saveProduct = async () => {
+    try {
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
+      }
+      if (isEditing) {
+        await axios.put(`${BASE_URL}/Product/updateproducts/${newProduct.id}`, newProduct, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Product updated successfully', { variant: 'success' });
+      } else {
+        await axios.post(`${BASE_URL}/Product/createproduct`, newProduct, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Product added successfully', { variant: 'success' });
+      }
+      setProductDialog(false);
+      fetchProducts();
+    } catch (error) {
+      console.error('Failed to save product', error);
+      enqueueSnackbar('Failed to save product', { variant: 'error' });
+    }
+  };
+
+  const actionBodyTemplate = (rowData) => {
+    return (
+      <div className="button-container">
+        <Button icon="pi pi-pencil" className="p-button-rounded p-button-success mr-2" onClick={() => handleEdit(rowData)} />
+        <Button icon="pi pi-trash" className="p-button-rounded p-button-danger" onClick={() => confirmDeleteProduct(rowData)} />
+      </div>
+    );
+  };
+
+  const variantsBodyTemplate = (rowData) => {
+    return (
+      <div>
+        {rowData.variants.map((variant, index) => (
+          <div key={index}>
+            {variant.color} / {variant.size} / {variant.quantity}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const header = (
+    <div className="table-header">
+      <h5 className="mx-0 my-1">Manage Inventory</h5>
+      <span className="custom-search">
+        <i className="pi pi-search" />
+        <InputText type="search" value={globalFilter} onInput={(e) => setGlobalFilter(e.target.value)} placeholder="Search" />
+      </span>
+    </div>
   );
-  setInventory({ ...inventory, variants: updatedVariants });
-};
 
-const handleAddVariant = () => {
-  setInventory({
-    ...inventory,
-    variants: [...inventory.variants, { color: '', size: '', quantity: '' }],
-  });
-};
 
-const handleRemoveVariant = (index) => {
-  const filteredVariants = inventory.variants.filter((_, i) => i !== index);
-  setInventory({ ...inventory, variants: filteredVariants });
-};
-  
+  const rightToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="Export" icon="pi pi-upload" className="p-button-help" onClick={() => dt.current.exportCSV()} />
+      </React.Fragment>
+    );
+  };
+
   return (
-    <Container maxWidth="lg">
+    <Container maxWidth="xl">
+             <style jsx>{`
+        .custom-search {
+          display: flex;
+          align-items: center;
+        }
+        .custom-search .pi {
+          margin-right: 8px;
+        }
+        .button-container {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .button-container .p-button {
+          margin: 0 5px;
+        }
+      `}</style>
       <Box sx={{ display: "flex" }}>
         <Sidebar />
         <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
           <Typography variant="h4" gutterBottom align="center">
             Inventory
           </Typography>
-
-  
-          <TableContainer component={Paper}>
-  <Table sx={{ width: '100%' }} aria-label="customized table">
-    <TableHead>
-      <TableRow>
-        <TableCell padding="checkbox">
-        </TableCell>
-        <TableCell style={{ width: '15%' }}>Product ID</TableCell>
-        <TableCell style={{ width: '15%' }}>Name</TableCell>
-        <TableCell style={{ width: '10%' }}>Colors</TableCell>
-        <TableCell style={{ width: '10%' }}>Sizes</TableCell>
-        <TableCell>Actions</TableCell>
-      </TableRow>
-    </TableHead>
-    <TableBody>
-          {products.map((product) => {
-            console.log('Product:', product); // Debugging statement
-            return (
-              <TableRow key={product.id}>
-                <TableCell padding="checkbox"></TableCell>
-                <TableCell>{product.id}</TableCell>
-                <TableCell>{product.name}</TableCell>
-                <TableCell>
-                      {product.variants && product.variants
-                        .map((variant) => variant.color)
-                        .join(", ")}
-                    </TableCell>
-                    <TableCell>
-                      {product.variants && product.variants.map((variant) => variant.size).join(", ")}
-                    </TableCell>
-                <TableCell>
-                <IconButton color="primary" onClick={() => handleEdit(product.id)}>
-                  <EditIcon />
-                </IconButton>
-                <IconButton color="secondary" onClick={() => handleDelete(product.id)}>
-                  <DeleteIcon />
-                </IconButton>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-
-        </TableBody>
-      </Table>
-    </TableContainer>
+          {loading ? (
+            <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
+              <CircularProgress />
             </Box>
-          </Box>
-        </Container>
+          ) : (
+            <div className="card">
+              <Toolbar className="mb-4" right={rightToolbarTemplate}></Toolbar>
+              <DataTable
+                ref={dt}
+                value={products}
+                paginator
+                header={header}
+                rows={10}
+                paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+                rowsPerPageOptions={[10, 25, 50]}
+                dataKey="id"
+                selectionMode="checkbox"
+                globalFilter={globalFilter}
+                emptyMessage="No products found."
+                currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+                tableStyle={{ minWidth: '50rem' }}
+                showGridlines
+                stripedRows
+              >
+                <Column field="id" header="Product ID" sortable filter filterPlaceholder="Search by ID" style={{ minWidth: '14rem' }} />
+                <Column field="name" header="Name" sortable filter filterPlaceholder="Search by name" style={{ minWidth: '14rem' }} />
+                <Column field="variants" header="Variants" body={variantsBodyTemplate} sortable filter filterPlaceholder="Search by variants" style={{ minWidth: '14rem' }} />
+                <Column header="Actions" headerStyle={{ width: '5rem', textAlign: 'center' }} bodyStyle={{ textAlign: 'center', overflow: 'visible' }} body={actionBodyTemplate} />
+              </DataTable>
+            </div>
+          )}
+
+          <Dialog visible={productDialog} style={{ width: '450px' }} header="Product Details" modal className="p-fluid" footer={() => (
+            <>
+              <Button label="Cancel" icon="pi pi-times" className="p-button-text" onClick={hideDialog} />
+              <Button label="Save" icon="pi pi-check" className="p-button-text" onClick={saveProduct} />
+            </>
+          )} onHide={hideDialog}>
+            <div className="p-field">
+              <label htmlFor="name">Name</label>
+              <InputText id="name" value={newProduct.name} onChange={handleChange} name="name" required />
+            </div>
+            <div className="p-field">
+              <label>Variants</label>
+              {newProduct.variants.map((variant, index) => (
+                <div key={index} className="p-field p-grid">
+                  <div className="p-col">
+                    <InputText placeholder="Color" name="color" value={variant.color} onChange={(e) => handleVariantChange(index, e)} />
+                  </div>
+                  <div className="p-col">
+                    <InputText placeholder="Size" name="size" value={variant.size} onChange={(e) => handleVariantChange(index, e)} />
+                  </div>
+                  <div className="p-col">
+                    <InputText placeholder="Quantity" name="quantity" value={variant.quantity} onChange={(e) => handleVariantChange(index, e)} />
+                  </div>
+                  <div className="p-col">
+                    <Button icon="pi pi-minus" className="p-button-danger" onClick={() => handleRemoveVariant(index)} />
+                  </div>
+                </div>
+              ))}
+              <Button icon="pi pi-plus" className="p-button-success" onClick={handleAddVariant} />
+            </div>
+          </Dialog>
+
+          <Dialog visible={deleteDialog} style={{ width: '450px' }} header="Confirm" modal footer={() => (
+            <>
+              <Button label="No" icon="pi pi-times" className="p-button-text" onClick={hideDeleteDialog} />
+              <Button label="Yes" icon="pi pi-check" className="p-button-text" onClick={handleDeleteProduct} />
+            </>
+          )} onHide={hideDeleteDialog}>
+            <div className="confirmation-content">
+              <i className="pi pi-exclamation-triangle" style={{ fontSize: '2rem' }} />
+              {productToDelete && <span>Are you sure you want to delete <b>{productToDelete.name}</b>?</span>}
+            </div>
+          </Dialog>
+        </Box>
+      </Box>
+    </Container>
   );
 };
-  export default InventoryPage;
+
+export default InventoryPage;
+

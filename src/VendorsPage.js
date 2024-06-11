@@ -1,47 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
-  Button, Table, IconButton, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
-  Typography, Modal, Box, TextField, Container, createTheme, ThemeProvider, CssBaseline,
-  MenuItem, FormControl, Select, InputLabel, Chip
+  Typography, Container, Box, Chip
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import { blue, pink } from '@mui/material/colors';
 import Sidebar from './Sidebar';
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: blue[500],
-    },
-    secondary: {
-      main: pink['A400'],
-    },
-  },
-});
-
-const modalStyle = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: 400,
-  bgcolor: 'background.paper',
-  borderRadius: '16px',
-  p: 4,
-  overflowY: 'auto',
-  maxHeight: '90vh',
-};
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { Dialog } from 'primereact/dialog';
+import { InputText } from 'primereact/inputtext';
+import { Toolbar } from 'primereact/toolbar';
+import { Button } from 'primereact/button';
+import { useSnackbar } from 'notistack';
+import { Dropdown } from 'primereact/dropdown';
+import 'primereact/resources/themes/saga-blue/theme.css';
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+import 'primeflex/primeflex.css';
+import { BASE_URL } from './config';
 
 const VendorsPage = () => {
+  const { enqueueSnackbar } = useSnackbar();
   const [vendors, setVendors] = useState([]);
-  const [brands, setBrands] = useState([]); // State variable for brands
-  const [stores, setStores] = useState([]); // State variable for stores
-  const [openModal, setOpenModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [currentVendor, setCurrentVendor] = useState({
+  const [brands, setBrands] = useState([]);
+  const [stores, setStores] = useState([]);
+  const [newVendor, setNewVendor] = useState({
     brand: '',
     stores: [],
     firstname: '',
@@ -52,83 +34,50 @@ const VendorsPage = () => {
     role: 'Vendor',
     status: 'ACTIVE'
   });
+  const [isEditing, setIsEditing] = useState(false);
+  const [vendorDialog, setVendorDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [vendorToDelete, setVendorToDelete] = useState(null);
+  const dt = useRef(null);
+  const [globalFilter, setGlobalFilter] = useState('');
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     fetchVendors();
-    fetchBrands(); // Fetch brands when the component mounts
-    fetchStores(); // Fetch stores when the component mounts
+    fetchBrands();
+    fetchStores();
   }, []);
 
   const fetchVendors = async () => {
-    const accessToken = localStorage.getItem('token');
-    if (!accessToken) {
-      console.error("Access token not available.");
-      return;
-    }
     try {
-      const response = await axios.get('http://localhost:4000/User/vendors', {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      console.log(response.data);
+      const response = await axios.get(`${BASE_URL}/User/vendors`);
       setVendors(response.data);
     } catch (error) {
       console.error("Failed to fetch vendors:", error);
-      setVendors([]); // Set to empty array on error
     }
   };
 
   const fetchBrands = async () => {
-    const accessToken = localStorage.getItem('token');
-    if (!accessToken) {
-      console.error("Access token not available.");
-      return;
-    }
     try {
-      const response = await axios.get('http://localhost:4000/Brand/getbrands', {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      console.log(response.data);
+      const response = await axios.get(`${BASE_URL}/Brand/getbrands`);
       setBrands(response.data);
     } catch (error) {
       console.error("Failed to fetch brands:", error);
-      setBrands([]); // Set to empty array on error
     }
   };
-
-  const handleBrandChange = (event) => {
-    const brand = event.target.value;
-    setCurrentVendor(prev => ({
-      ...prev,
-      brand: brand,
-    }));
-  };
-  
-  
-
 
   const fetchStores = async () => {
-    const accessToken = localStorage.getItem('token');
-    if (!accessToken) {
-      console.error("Access token not available.");
-      return;
-    }
     try {
-      const response = await axios.get('http://localhost:4000/Store/all', {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      console.log(response.data);
-      setStores(response.data); // Update this line
+      const response = await axios.get(`${BASE_URL}/Store/all`);
+      setStores(response.data);
     } catch (error) {
       console.error("Failed to fetch stores:", error);
-      setStores([]); // Set to empty array on error
     }
   };
-  
 
-  const handleOpenModal = () => {
-    setOpenModal(true);
-    setIsEditing(false);
-    setCurrentVendor({
+  const openNew = () => {
+    setNewVendor({
       brand: '',
       stores: [],
       firstname: '',
@@ -139,234 +88,252 @@ const VendorsPage = () => {
       role: 'Vendor',
       status: 'ACTIVE'
     });
+    setIsEditing(false);
+    setVendorDialog(true);
   };
 
-  const handleCloseModal = () => {
-    setOpenModal(false);
+  const hideDialog = () => {
+    setVendorDialog(false);
   };
 
-  const handleChange = (event) => {
-    const { name, value } = event.target;
-    if (name === 'stores') {
-        setCurrentVendor(prev => ({
-            ...prev,
-            [name]: [...value], // Ensure value is handled as an array
-        }));
-    } else {
-        setCurrentVendor(prev => ({
-            ...prev,
-            [name]: value,
-        }));
-    }
-};
+  const hideDeleteDialog = () => {
+    setDeleteDialog(false);
+    setVendorToDelete(null);
+  };
 
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    const accessToken = localStorage.getItem('token');
-    if (!accessToken) {
-      console.error("Access token not available.");
-      return;
-    }
-    const url = isEditing ? `http://localhost:4000/User/vendor/${currentVendor._id}` : 'http://localhost:4000/User/signup';
-    const method = isEditing ? axios.put : axios.post;
-    try {
-      await method(url, currentVendor, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      handleCloseModal();
-      fetchVendors();
-    } catch (error) {
-      console.error("Failed to submit vendor:", error.response?.data || error.message);
-    }
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setNewVendor(prevState => ({
+      ...prevState,
+      [name]: value,
+    }));
   };
 
   const handleEdit = (vendor) => {
-    setOpenModal(true);
+    setNewVendor({
+      _id: vendor.user._id,
+      firstname: vendor.user.firstname,
+      lastname: vendor.user.lastname,
+      username: vendor.user.username,
+      email: vendor.user.email,
+      password: '',
+      role: vendor.user.role,
+      status: vendor.user.status,
+      brand: vendor.brand._id,
+      stores: vendor.stores.map(store => store._id)
+    });
     setIsEditing(true);
-    setCurrentVendor({
-        _id: vendor._id, 
-        firstname: vendor.user?.firstname || '',
-        lastname: vendor.user?.lastname || '',
-        username: vendor.user?.username || '',
-        email: vendor.user?.email || '',
-        password: '', // 
-        role: vendor.user?.role || 'Vendor',
-        status: vendor.user?.status || 'ACTIVE',
-        brand: vendor.brand?._id || '',
-        stores: vendor.stores?.map(store => store._id) || [], 
-    });
-};
+    setVendorDialog(true);
+  };
 
+  const confirmDeleteVendor = (vendor) => {
+    setVendorToDelete(vendor);
+    setDeleteDialog(true);
+  };
 
-const handleDelete = async (id) => {
-  console.log("Deleting vendor with ID:", id); // Log the ID to ensure it's correct
-  const accessToken = localStorage.getItem('token');
-  if (!accessToken) {
-    console.error("Access token not available.");
-    return;
-  }
-  const deleteUrl = `http://localhost:4000/User/${id}`;
-  try {
-    const response = await axios.delete(deleteUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    console.log("Deletion successful, server response:", response);
-    fetchVendors(); // Refresh the list after deletion
-  } catch (error) {
-    console.error("Failed to delete vendor:", error);
-    if (error.response) {
-      console.error("Server responded with:", error.response.status, error.response.data);
+  const handleDeleteVendor = async () => {
+    if (!vendorToDelete) {
+      console.error("Vendor ID is undefined, cannot delete");
+      return;
     }
-  }
-};
 
+    try {
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
+      }
+      await axios.delete(`${BASE_URL}/User/${vendorToDelete.user._id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      fetchVendors();
+      enqueueSnackbar('Vendor deleted successfully', { variant: 'success' });
+    } catch (error) {
+      console.error("Failed to delete vendor:", error.response ? error.response.data : error);
+    } finally {
+      setDeleteDialog(false);
+    }
+  };
+
+  const saveVendor = async () => {
+    try {
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
+      }
+      if (isEditing) {
+        await axios.put(`${BASE_URL}/User/vendor/${newVendor._id}`, newVendor, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Vendor updated successfully', { variant: 'success' });
+      } else {
+        await axios.post(`${BASE_URL}/User/signup`, newVendor, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Vendor added successfully', { variant: 'success' });
+      }
+      setVendorDialog(false);
+      fetchVendors();
+    } catch (error) {
+      console.error('Failed to save vendor', error);
+      enqueueSnackbar('Failed to save vendor', { variant: 'error' });
+    }
+  };
+
+  const actionBodyTemplate = (rowData) => {
+    return (
+      <div className="button-container">
+        <Button icon="pi pi-pencil" className="p-button-rounded p-button-success mr-2" onClick={() => handleEdit(rowData)} />
+        <Button icon="pi pi-trash" className="p-button-rounded p-button-danger" onClick={() => confirmDeleteVendor(rowData)} />
+      </div>
+    );
+  };
+
+  const brandBodyTemplate = (rowData) => {
+    return rowData.brand.name;
+  };
+
+  const storesBodyTemplate = (rowData) => {
+    return rowData.stores.map(store => <Chip key={store._id} label={store.name} />);
+  };
+
+
+  const header = (
+    <div className="table-header">
+      <h5 className="mx-0 my-1">Manage Vendors</h5>
+      <span className="custom-search">
+        <i className="pi pi-search" />
+        <InputText type="search" value={globalFilter} onInput={(e) => setGlobalFilter(e.target.value)} placeholder="Search" />
+      </span>
+    </div>
+  );
+
+  const leftToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="New" icon="pi pi-plus" className="p-button-success mr-2" onClick={openNew} />
+      </React.Fragment>
+    );
+  };
+
+  const rightToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="Export" icon="pi pi-upload" className="p-button-help" onClick={() => dt.current.exportCSV()} />
+      </React.Fragment>
+    );
+  };
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Container maxWidth="lg">
-        <Box sx={{ display: 'flex' }}>
-          <Sidebar />
-          <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-            <Typography variant="h4" gutterBottom align="center" color="primary.main">
-              Vendor Management
-            </Typography>
-            <Button startIcon={<AddCircleOutlineIcon />} variant="contained" color="primary" onClick={handleOpenModal} sx={{ mb: 2 }}>
-              Add New Vendor
-            </Button>
-            <Modal open={openModal} onClose={handleCloseModal}>
-  <Box sx={modalStyle} component="form" onSubmit={handleSubmit}>
-    <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-      {isEditing ? 'Edit Vendor' : 'Add New Vendor'}
-    </Typography>
-    <TextField margin="normal" fullWidth label="First Name" name="firstname" value={currentVendor.firstname} onChange={handleChange} />
-    <TextField margin="normal" fullWidth label="Last Name" name="lastname" value={currentVendor.lastname} onChange={handleChange} />
-    <TextField margin="normal" fullWidth label="User Name" name="username" value={currentVendor.username} onChange={handleChange} />
-    <TextField margin="normal" fullWidth label="Email" name="email" value={currentVendor.email} onChange={handleChange} />
-    <TextField margin="normal" fullWidth label="Password" name="password" type="password" value={currentVendor.password} onChange={handleChange} />
-    <FormControl fullWidth margin="normal">
-      <InputLabel id="role-select-label">Role</InputLabel>
-      <Select
-        labelId="role-select-label"
-        id="role-select"
-        value={currentVendor.role}
-        label="Role"
-        name="role"
-        onChange={handleChange}
-      >
-        <MenuItem value="Vendor">Vendor</MenuItem>
-      </Select>
-    </FormControl>
-    <FormControl fullWidth margin="normal">
-      <InputLabel id="status-select-label">Status</InputLabel>
-      <Select
-        labelId="status-select-label"
-        id="status-select"
-        value={currentVendor.status}
-        label="Status"
-        name="status"
-        onChange={handleChange}
-      >
-        <MenuItem value="ACTIVE">Active</MenuItem>
-        <MenuItem value="INACTIVE">Inactive</MenuItem>
-      </Select>
-    </FormControl>
-    <FormControl fullWidth margin="normal">
-      <InputLabel id="brand-select-label">Brand</InputLabel>
-      <Select
-        labelId="brand-select-label"
-        id="brand-select"
-        value={currentVendor.brand}
-        label="Brand"
-        name="brand"
-        onChange={handleBrandChange}
-      >
-        {brands?.length > 0 ? brands.map((brand) => (
-          <MenuItem key={brand._id} value={brand._id}>{brand.name}</MenuItem>
-        )) : <MenuItem value="">No Brands Available</MenuItem>}
-      </Select>
+    <Container maxWidth="xl">
+      <style jsx>{`
+        .custom-search {
+          display: flex;
+          align-items: center;
+        }
+        .custom-search .pi {
+          margin-right: 8px;
+        }
+        .button-container {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .button-container .p-button {
+          margin: 0 5px;
+        }
+      `}</style>
+      <Box sx={{ display: "flex", overflowX: 'hidden' }}>
+        <Sidebar />
+        <Box component="main" sx={{ flexGrow: 1, p: 3, overflowX: 'hidden' }}>
+          <Typography variant="h4" gutterBottom align="center">
+            Vendors
+          </Typography>
+          <div className="card" style={{ overflowX: 'auto' }}>
+            <Toolbar className="mb-4" left={leftToolbarTemplate} right={rightToolbarTemplate}></Toolbar>
+            <DataTable
+              ref={dt}
+              value={vendors}
+              paginator
+              header={header}
+              rows={10}
+              paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+              rowsPerPageOptions={[10, 25, 50]}
+              dataKey="_id"
+              selectionMode="checkbox"
+              globalFilter={globalFilter}
+              emptyMessage="No vendors found."
+              currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+              tableStyle={{ minWidth: '100%' }}
+              showGridlines
+              stripedRows
+            >
+              {/* <Column field="user._id" header="Vendor ID" sortable filter filterPlaceholder="Search by ID" style={{ minWidth: '12rem' }} />
+              <Column field="user.firstname" header="First Name" sortable filter filterPlaceholder="Search by first name" style={{ minWidth: '12rem' }} />
+              <Column field="user.lastname" header="Last Name" sortable filter filterPlaceholder="Search by last name" style={{ minWidth: '12rem' }} /> */}
+              <Column field="user.username" header="Username" sortable filter filterPlaceholder="Search by username" style={{ minWidth: '12rem' }} />
+              <Column field="user.email" header="Email" sortable filter filterPlaceholder="Search by email" style={{ minWidth: '12rem' }} />
+              {/* <Column field="user.role" header="Role" sortable filter filterPlaceholder="Search by role" style={{ minWidth: '12rem' }} /> */}
+              {/* <Column field="user.status" header="Status" sortable filter filterPlaceholder="Search by status" style={{ minWidth: '12rem' }} /> */}
+              <Column field="brand.name" header="Brand" body={brandBodyTemplate} sortable filter filterPlaceholder="Search by brand" style={{ minWidth: '12rem' }} />
+              <Column field="stores.name" header="Stores" body={storesBodyTemplate} sortable filter filterPlaceholder="Search by stores" style={{ minWidth: '12rem' }} />
+              <Column header="Actions" headerStyle={{ width: '5rem', textAlign: 'center' }} bodyStyle={{ textAlign: 'center', overflow: 'visible' }} body={actionBodyTemplate} />
+            </DataTable>
+          </div>
 
-    </FormControl>
+          <Dialog visible={vendorDialog} style={{ width: '450px' }} header="Vendor Details" modal className="p-fluid" footer={() => (
+            <>
+              <Button label="Cancel" icon="pi pi-times" className="p-button-text" onClick={hideDialog} />
+              <Button label="Save" icon="pi pi-check" className="p-button-text" onClick={saveVendor} />
+            </>
+          )} onHide={hideDialog}>
+            <div className="p-field">
+              <label htmlFor="firstname">First Name</label>
+              <InputText id="firstname" value={newVendor.firstname} onChange={handleChange} name="firstname" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="lastname">Last Name</label>
+              <InputText id="lastname" value={newVendor.lastname} onChange={handleChange} name="lastname" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="username">Username</label>
+              <InputText id="username" value={newVendor.username} onChange={handleChange} name="username" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="email">Email</label>
+              <InputText id="email" value={newVendor.email} onChange={handleChange} name="email" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="password">Password</label>
+              <InputText id="password" value={newVendor.password} onChange={handleChange} name="password" required type="password" />
+            </div>
+            <div className="p-field">
+              <label htmlFor="role">Role</label>
+              <Dropdown id="role" value={newVendor.role} options={[{ label: 'Vendor', value: 'Vendor' }]} onChange={(e) => handleChange({ target: { name: 'role', value: e.value } })} placeholder="Select a Role" />
+            </div>
+            <div className="p-field">
+              <label htmlFor="status">Status</label>
+              <Dropdown id="status" value={newVendor.status} options={[{ label: 'Active', value: 'ACTIVE' }, { label: 'Inactive', value: 'INACTIVE' }]} onChange={(e) => handleChange({ target: { name: 'status', value: e.value } })} placeholder="Select a Status" />
+            </div>
+            <div className="p-field">
+              <label htmlFor="brand">Brand</label>
+              <Dropdown id="brand" value={newVendor.brand} options={brands.map(brand => ({ label: brand.name, value: brand._id }))} onChange={(e) => handleChange({ target: { name: 'brand', value: e.value } })} placeholder="Select a Brand" />
+            </div>
+            <div className="p-field">
+              <label htmlFor="stores">Stores</label>
+              <Dropdown id="stores" value={newVendor.stores} options={stores.map(store => ({ label: store.name, value: store._id }))} onChange={(e) => handleChange({ target: { name: 'stores', value: e.value } })} placeholder="Select Stores" multiple />
+            </div>
+          </Dialog>
 
-    <FormControl fullWidth margin="normal">
-      <InputLabel id="stores-select-label">Stores</InputLabel>
-      <Select
-        labelId="stores-select-label"
-        id="stores-select"
-        multiple
-        value={currentVendor.stores || []}
-        label="Stores"
-        name="stores"
-        onChange={handleChange}
-      >
-        {stores?.length > 0 ? stores.map((store) => (
-              <MenuItem key={store._id} value={store._id}>{store.name}</MenuItem>
-            )) : <MenuItem value="">No Stores Available</MenuItem>}
-          </Select>
-            </FormControl>
-            <Button type="submit" variant="contained" color="primary" sx={{ mt: 3 }}>
-              {isEditing ? 'Update' : 'Add'}
-            </Button>
-          </Box>
-        </Modal>
-            <TableContainer component={Paper}>
-              <Table sx={{ width: '100%' }} aria-label="customized table">
-                <TableHead>
-                  <TableRow>
-                    <TableCell style={{ width: '15%' }}>Vendor ID</TableCell>
-                    <TableCell style={{ width: '15%' }}>First Name</TableCell>
-                    <TableCell style={{ width: '15%' }}>Last Name</TableCell>
-                    <TableCell style={{ width: '15%' }}>User Name</TableCell>
-                    <TableCell style={{ width: '15%' }}>Email</TableCell>
-                    <TableCell style={{ width: '15%' }}>Password</TableCell>
-                    <TableCell style={{ width: '15%' }}>Role</TableCell>
-                    <TableCell style={{ width: '15%' }}>Status</TableCell>
-                    <TableCell style={{ width: '15%' }}>Brand</TableCell>
-                    <TableCell style={{ width: '15%' }}>Stores</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-              {vendors.map((vendor) => (
-                <TableRow key={vendor.user._id}>
-                  <TableCell>{vendor.user ? vendor.user._id : 'No data'}</TableCell>
-                  <TableCell>{vendor.user ? vendor.user.firstname : 'No data'}</TableCell>
-                  <TableCell>{vendor.user ? vendor.user.lastname : 'No data'}</TableCell>
-                  <TableCell>{vendor.user ? vendor.user.username : 'No data'}</TableCell>
-                  <TableCell>{vendor.user ? vendor.user.email : 'No data'}</TableCell>
-                  <TableCell>{'******'}</TableCell>
-                  <TableCell>{vendor.user ? vendor.user.role : 'No role'}</TableCell>
-                  <TableCell>{vendor.user ? (vendor.user.status === 'ACTIVE' ? 'Active' : 'Inactive') : 'No status'}</TableCell>
-                  <TableCell>
-                    {vendor.brand ? vendor.brand._id : (vendor.brandId ? 'Brand loading...' : 'No brand assigned')}
-                  </TableCell>
-                  <TableCell>
-                    {vendor.stores && vendor.stores.length > 0 ? (
-                      vendor.stores.map((store) => (
-                        <Chip key={store._id} label={store.name} />
-                      ))
-                    ) : (
-                      'No stores assigned'
-                    )}
-                      </TableCell>
-                      <TableCell align="right">
-                        <IconButton color="primary" onClick={() => handleEdit(vendor)}>
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton color="secondary" onClick={() => handleDelete(vendor.user._id)}>
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Box>
+          <Dialog visible={deleteDialog} style={{ width: '450px' }} header="Confirm" modal footer={() => (
+            <>
+              <Button label="No" icon="pi pi-times" className="p-button-text" onClick={hideDeleteDialog} />
+              <Button label="Yes" icon="pi pi-check" className="p-button-text" onClick={handleDeleteVendor} />
+            </>
+          )} onHide={hideDeleteDialog}>
+            <div className="confirmation-content">
+              <i className="pi pi-exclamation-triangle" style={{ fontSize: '2rem' }} />
+              {vendorToDelete && <span>Are you sure you want to delete <b>{vendorToDelete.user.firstname} {vendorToDelete.user.lastname}</b>?</span>}
+            </div>
+          </Dialog>
         </Box>
-      </Container>
-    </ThemeProvider>
+      </Box>
+    </Container>
   );
 };
 

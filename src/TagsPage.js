@@ -1,215 +1,259 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import {
-  Button, Table, IconButton, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Typography, Modal, Box, TextField, Container, createTheme, ThemeProvider, CssBaseline
+  Typography, Container, Box
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import { blue, pink } from '@mui/material/colors';
 import Sidebar from './Sidebar';
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: blue[500],
-    },
-    secondary: {
-      main: pink['A400'],
-    },
-  },
-});
-
-const modalStyle = {
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  transform: 'translate(-50%, -50%)',
-  width: '90%',
-  maxWidth: '400px',
-  bgcolor: 'background.paper',
-  borderRadius: '16px',
-  p: 4,
-  overflowY: 'auto',
-  maxHeight: '90vh',
-};
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { Dialog } from 'primereact/dialog';
+import { InputText } from 'primereact/inputtext';
+import { Toolbar } from 'primereact/toolbar';
+import { Button } from 'primereact/button';
+import { useSnackbar } from 'notistack';
+import { Dropdown } from 'primereact/dropdown';
+import 'primereact/resources/themes/saga-blue/theme.css';
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+import 'primeflex/primeflex.css';
+import { BASE_URL } from './config';
 
 const TagsPage = () => {
+  const { enqueueSnackbar } = useSnackbar();
   const [tags, setTags] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [categories, setCategories] = useState([]);
+  const [newTag, setNewTag] = useState({ name: '', parentCategory: '' });
+  const [isEditing, setIsEditing] = useState(false);
+  const [tagDialog, setTagDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [tagToDelete, setTagToDelete] = useState(null);
+  const dt = useRef(null);
+  const [globalFilter, setGlobalFilter] = useState('');
 
-  const [currentTag, setCurrentTag] = useState({
-    name: '',
-    parentTag: '',
-  });
-  const [parentTags, setParentTags] = useState([]);
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    fetchTags();
+    fetchCategories();
+  }, []);
 
   const fetchTags = async () => {
     try {
-      const { data } = await axios.get(`http://localhost:4000/Tag/tags`);
-      console.log("Tags:", data); // Debugging line to inspect tags
-      setTags(data);
-      setParentTags(data.filter(tag => !tag.parentTag));
+      const response = await axios.get(`${BASE_URL}/Tag/tags`);
+      setTags(response.data);
     } catch (error) {
       console.error("Failed to fetch tags:", error);
     }
   };
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    
-    const fetchCategories = async () => {
-      try {
-        const response = await axios.get('http://localhost:4000/Category/categories');
-        setCategories(response.data);
-      } catch (error) {
-        console.error("Failed to fetch categories:", error);
-      }
-    };
-  
-    fetchTags();
-    fetchCategories();
-  }, []);
-  
-  const handleOpen = () => {
-    setOpen(true);
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${BASE_URL}/Category/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error("Failed to fetch categories:", error);
+    }
+  };
+
+  const openNew = () => {
+    setNewTag({ name: '', parentCategory: '' });
     setIsEditing(false);
-    setCurrentTag({
-      name: '',
-      parentTag: '',
-    });
+    setTagDialog(true);
   };
 
-  const handleEdit = (tag) => {
-    setOpen(true);
-    setIsEditing(true);
-    setCurrentTag(tag);
+  const hideDialog = () => {
+    setTagDialog(false);
   };
 
-  const handleClose = () => setOpen(false);
+  const hideDeleteDialog = () => {
+    setDeleteDialog(false);
+    setTagToDelete(null);
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setCurrentTag(prevState => ({
+    setNewTag(prevState => ({
       ...prevState,
       [name]: value,
     }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleEdit = (tag) => {
+    setNewTag(tag);
+    setIsEditing(true);
+    setTagDialog(true);
+  };
+
+  const confirmDeleteTag = (tag) => {
+    setTagToDelete(tag);
+    setDeleteDialog(true);
+  };
+
+  const handleDeleteTag = async () => {
+    if (!tagToDelete) {
+      console.error("Tag ID is undefined, cannot delete");
+      return;
+    }
+
     try {
-      if (isEditing) {
-        console.log(currentTag);
-        const parentCategoryObj = categories.find(category => category._id === currentTag.parentCategory);
-  
-        console.log(`Submitting tag: ${currentTag.name}, Parent Category: ${parentCategoryObj ? parentCategoryObj.name : 'None'}`);
-
-        await axios.put(`http://localhost:4000/Tag/updatetag/${currentTag._id}`, currentTag);
-        console.log(tags);
-        console.log(categories);
-
-      } else {
-        console.log(currentTag);
-        await axios.post(`http://localhost:4000/Tag/createtag`, currentTag);
-
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
       }
-      setOpen(false);
-      await fetchTags();
+      await axios.delete(`${BASE_URL}/Tag/deletetag/${tagToDelete._id}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      fetchTags();
+      enqueueSnackbar('Tag deleted successfully', { variant: 'success' });
     } catch (error) {
-      console.error("Failed to submit tag:", error);
+      console.error("Failed to delete tag:", error.response ? error.response.data : error);
+    } finally {
+      setDeleteDialog(false);
     }
   };
 
-  const handleDelete = async (id) => {
+  const saveTag = async () => {
     try {
-      await axios.delete(`http://localhost:4000/Tag/deletetag/${id}`);
-      await fetchTags();
+      const accessToken = localStorage.getItem('token');
+      if (!accessToken) {
+        console.error("Access token not available.");
+        return;
+      }
+      if (isEditing) {
+        await axios.put(`${BASE_URL}/Tag/updatetag/${newTag._id}`, newTag, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Tag updated successfully', { variant: 'success' });
+      } else {
+        await axios.post(`${BASE_URL}/Tag/createtag`, newTag, { headers: { Authorization: `Bearer ${accessToken}` } });
+        enqueueSnackbar('Tag added successfully', { variant: 'success' });
+      }
+      setTagDialog(false);
+      fetchTags();
     } catch (error) {
-      console.error("Failed to delete tag:", error);
+      console.error('Failed to save tag', error);
+      enqueueSnackbar('Failed to save tag', { variant: 'error' });
     }
+  };
+
+  const actionBodyTemplate = (rowData) => {
+    return (
+         <div className="button-container">
+        <Button icon="pi pi-pencil" className="p-button-rounded p-button-success mr-2" onClick={() => handleEdit(rowData)} />
+        <Button icon="pi pi-trash" className="p-button-rounded p-button-danger" onClick={() => confirmDeleteTag(rowData)} />
+        </div>
+    );
+  };
+
+  const parentCategoryBodyTemplate = (rowData) => {
+    return categories.find(category => category._id === rowData.parentCategory)?.name || 'None';
+  };
+
+  const header = (
+    <div className="table-header">
+      <h5 className="mx-0 my-1">Manage Tags</h5>
+      <span className="custom-search">
+        <i className="pi pi-search" />
+        <InputText type="search" value={globalFilter} onInput={(e) => setGlobalFilter(e.target.value)} placeholder="Search" />
+      </span>
+    </div>
+  );
+
+  const leftToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="New" icon="pi pi-plus" className="p-button-success mr-2" onClick={openNew} />
+      </React.Fragment>
+    );
+  };
+
+  const rightToolbarTemplate = () => {
+    return (
+      <React.Fragment>
+        <Button label="Export" icon="pi pi-upload" className="p-button-help" onClick={() => dt.current.exportCSV()} />
+      </React.Fragment>
+    );
   };
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Container maxWidth="md">
-      <Box sx={{ display: 'flex' }}>
-          <Sidebar />
-          <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-        <Typography variant="h4" gutterBottom align="center" color="primary.main">
-          Tag Management
-        </Typography>
-        <Button startIcon={<AddCircleOutlineIcon />} variant="contained" color="primary" onClick={handleOpen} sx={{ mb: 2 }}>
-          Add New Tag
-        </Button>
-        <Modal open={open} onClose={handleClose}>
-          <Box sx={modalStyle} component="form" onSubmit={handleSubmit}>
-            <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-              {isEditing ? 'Edit Tag' : 'Add New Tag'}
-            </Typography>
-            <TextField margin="normal" fullWidth label="Name" name="name" value={currentTag.name} onChange={handleChange} />
-            <TextField
-              select
-              label="Parent Category"
-              name="parentCategory" // Changed from parentTag to parentCategory
-              value={currentTag.parentCategory} // Adjust based on your state structure
-              onChange={handleChange}
-              fullWidth
-              SelectProps={{ native: true }}
-              helperText="Please select a parent category (optional)"
-              margin="normal"
+    <Container maxWidth="xl">
+       <style jsx>{`
+        .custom-search {
+          display: flex;
+          align-items: center;
+        }
+        .custom-search .pi {
+          margin-right: 8px;
+        }
+        .button-container {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .button-container .p-button {
+          margin: 0 5px;
+        }
+      `}</style>
+      <Box sx={{ display: "flex" }}>
+        <Sidebar />
+        <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+          <Typography variant="h4" gutterBottom align="center">
+            Tags
+          </Typography>
+          <div className="card">
+            <Toolbar className="mb-4" left={leftToolbarTemplate} right={rightToolbarTemplate}></Toolbar>
+            <DataTable
+              ref={dt}
+              value={tags}
+              paginator
+              header={header}
+              rows={10}
+              paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+              rowsPerPageOptions={[10, 25, 50]}
+              dataKey="_id"
+              selectionMode="checkbox"
+              globalFilter={globalFilter}
+              emptyMessage="No tags found."
+              currentPageReportTemplate="Showing {first} to {last} of {totalRecords} entries"
+              tableStyle={{ minWidth: '50rem' }}
+              showGridlines
+              stripedRows
             >
-              <option value="">None</option>
-              {categories.map((category) => (
-                <option key={category._id} value={category._id}>
-                  {category.name}
-                </option>
-              ))}
-            </TextField>
+              <Column field="name" header="Name" sortable filter filterPlaceholder="Search by name" style={{ minWidth: '14rem' }} />
+              {/* <Column field="parentCategory" header="Parent Category" body={parentCategoryBodyTemplate} sortable filter filterPlaceholder="Search by parent category" style={{ minWidth: '14rem' }} /> */}
+              <Column header="Actions" headerStyle={{ width: '5rem', textAlign: 'center' }} bodyStyle={{ textAlign: 'center', overflow: 'visible' }} body={actionBodyTemplate} />
+            </DataTable>
+          </div>
 
-            <Button type="submit" variant="contained" color="primary" sx={{ mt: 3 }}>
-              {isEditing ? 'Update' : 'Add'}
-            </Button>
-          </Box>
-        </Modal>
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Parent Category</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {tags.map((tag) => (
-                <TableRow key={tag._id}>
-                  <TableCell>{tag.name}</TableCell>
-                  <TableCell>
-                  {categories.find(category => category._id === tag .parentCategory)?.name || 'None'}
-                </TableCell>
-                  <TableCell align="right">
-                    <IconButton color="primary" onClick={() => handleEdit(tag)}>
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton color="secondary" onClick={() => handleDelete(tag._id)}>
-                      <DeleteIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+          <Dialog visible={tagDialog} style={{ width: '450px' }} header="Tag Details" modal className="p-fluid" footer={() => (
+            <>
+              <Button label="Cancel" icon="pi pi-times" className="p-button-text" onClick={hideDialog} />
+              <Button label="Save" icon="pi pi-check" className="p-button-text" onClick={saveTag} />
+            </>
+          )} onHide={hideDialog}>
+            <div className="p-field">
+              <label htmlFor="name">Name</label>
+              <InputText id="name" value={newTag.name} onChange={handleChange} name="name" required />
+            </div>
+            <div className="p-field">
+              <label htmlFor="parentCategory">Parent Category</label>
+              <Dropdown id="parentCategory" value={newTag.parentCategory} options={categories} onChange={(e) => handleChange({ target: { name: 'parentCategory', value: e.value } })} optionLabel="name" placeholder="Select a Parent Category" />
+            </div>
+          </Dialog>
+
+          <Dialog visible={deleteDialog} style={{ width: '450px' }} header="Confirm" modal footer={() => (
+            <>
+              <Button label="No" icon="pi pi-times" className="p-button-text" onClick={hideDeleteDialog} />
+              <Button label="Yes" icon="pi pi-check" className="p-button-text" onClick={handleDeleteTag} />
+            </>
+          )} onHide={hideDeleteDialog}>
+            <div className="confirmation-content">
+              <i className="pi pi-exclamation-triangle" style={{ fontSize: '2rem' }} />
+              {tagToDelete && <span>Are you sure you want to delete <b>{tagToDelete.name}</b>?</span>}
+            </div>
+          </Dialog>
         </Box>
-        </Box>
-      </Container>
-    </ThemeProvider>
+      </Box>
+    </Container>
   );
 };
 
 export default TagsPage;
+
